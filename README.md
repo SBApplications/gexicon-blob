@@ -58,7 +58,13 @@ hour relative to New York when the clocks change. Nothing downstream depends on
 the exact minute.
 
 A run that produces a short blob — a symbol failed to fetch — fails instead of
-replacing a complete one.
+replacing a complete one, so `latest.blob` keeps the last complete set rather
+than being quietly half-replaced.
+
+**A red run on a market holiday is expected.** CBOE keeps serving the previous
+session's file, the pipeline drops every symbol whose quote is older than twelve
+hours, and the blob comes back short and is refused. Nothing to publish on a day
+the market is shut, and Friday's line stays in place.
 
 ## The archive
 
