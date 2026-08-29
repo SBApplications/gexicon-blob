@@ -2,135 +2,302 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#020617">
 <title>Gexicon data blob</title>
 <style>
   :root {
-    --bg:#08090b;
-    --panel:#101216;
-    --panel-2:#161920;
-    --panel-3:#1b1f27;
-    --line:#20242c;
-    --line-2:#2a303a;
-    --ink:#e9ebee;
-    --dim:#878e99;
-    --dimmer:#5f6672;
-    --accent:#4da3ff;
+    /* Ground: deep slate, never pure black (OLED smear). */
+    --bg:#020617;
+    --well:#01040e;
+    --surface:#0e1223;
+    --surface-2:#141a2e;
+
+    /* Hairlines are light-on-dark alpha, so they read as edges, not boxes. */
+    --line:rgba(255,255,255,.075);
+    --line-2:rgba(255,255,255,.125);
+    --sheen:rgba(255,255,255,.055);
+
+    --ink:#f8fafc;
+    --dim:#94a3b8;
+    --dimmer:#7c8899;
+
+    /* One accent. Green because this page is a pipeline's pulse. */
+    --accent:#22c55e;
+    --accent-ink:#03170b;
+    --accent-soft:rgba(34,197,94,.14);
+    --accent-line:rgba(34,197,94,.32);
+
+    --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,ui-sans-serif,sans-serif;
     --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+    --r-lg:20px;
+    --r-md:14px;
+    --r-sm:10px;
   }
+
   * { box-sizing:border-box; }
   html { -webkit-text-size-adjust:100%; }
+
   body {
     margin:0;
     background:var(--bg);
     color:var(--ink);
-    font:15px/1.55 ui-sans-serif,-apple-system,"SF Pro Text",Segoe UI,Roboto,sans-serif;
+    font:16px/1.55 var(--sans);
+    letter-spacing:-.005em;
     -webkit-font-smoothing:antialiased;
-    padding:0 18px 72px;
+    padding:0 20px calc(80px + env(safe-area-inset-bottom));
+    min-height:100vh;
   }
-  /* one soft accent wash at the top, nothing else decorative */
-  body::before {
-    content:""; position:fixed; inset:0 0 auto 0; height:340px; pointer-events:none;
-    background:radial-gradient(90% 100% at 50% 0%, rgba(77,163,255,.10), transparent 70%);
-  }
-  .wrap { position:relative; max-width:940px; margin:0 auto; }
 
-  header { padding:46px 0 22px; }
+  /* Ambient light: one accent bloom off-centre, one cool lift behind it.
+     Fixed and inert — it is atmosphere, not a component. */
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(60% 44% at 22% -6%, rgba(34,197,94,.13), transparent 62%),
+      radial-gradient(78% 50% at 88% 2%, rgba(79,104,160,.14), transparent 66%);
+  }
+
+  .wrap { position:relative; z-index:1; max-width:900px; margin:0 auto; }
+
+  /* ---- header ---------------------------------------------------------- */
+  header { padding:56px 0 26px; }
+
   .brand {
-    display:flex; align-items:center; gap:10px;
-    font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
+    display:flex; align-items:center; gap:9px;
+    font:500 11px/1 var(--mono);
+    letter-spacing:.22em; text-transform:uppercase;
     color:var(--dim);
   }
-  .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px rgba(77,163,255,.8); }
-  h1 { font-size:26px; font-weight:600; letter-spacing:-.02em; margin:14px 0 8px; }
-  .sub { color:var(--dim); font-size:14.5px; max-width:60ch; margin:0; }
+  .pulse { position:relative; width:7px; height:7px; flex:none; }
+  .pulse i {
+    position:absolute; inset:0; border-radius:50%;
+    background:var(--accent); box-shadow:0 0 10px rgba(34,197,94,.7);
+  }
+  .pulse::after {
+    content:""; position:absolute; inset:0; border-radius:50%;
+    border:1px solid var(--accent);
+    animation:ring 3.2s cubic-bezier(.16,1,.3,1) infinite;
+  }
+  @keyframes ring {
+    0%   { transform:scale(1);   opacity:.7; }
+    70%  { transform:scale(3.4); opacity:0; }
+    100% { transform:scale(3.4); opacity:0; }
+  }
 
-  .card {
-    background:var(--panel);
+  h1 {
+    font-size:clamp(28px,6vw,38px); font-weight:600;
+    letter-spacing:-.028em; line-height:1.08;
+    margin:18px 0 10px;
+  }
+  .sub { color:var(--dim); font-size:15.5px; max-width:56ch; margin:0; }
+  .sub b { color:var(--ink); font-weight:550; }
+
+  /* ---- the one surface -------------------------------------------------- */
+  /* Blob and schedule live on the same glass panel: they are one story,
+     "what to copy and when the next one lands", not two boxes. */
+  .panel {
+    position:relative;
+    margin-top:30px;
+    border-radius:var(--r-lg);
     border:1px solid var(--line);
-    border-radius:14px;
-    margin-top:18px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012) 38%, rgba(255,255,255,.008)),
+      var(--surface);
+    box-shadow:
+      inset 0 1px 0 var(--sheen),
+      0 1px 2px rgba(0,0,0,.5),
+      0 26px 60px -32px rgba(0,0,0,.9);
     overflow:hidden;
   }
-  .card-head {
-    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
-    padding:13px 16px;
-    border-bottom:1px solid var(--line);
-    background:var(--panel-2);
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)) {
+    .panel { backdrop-filter:blur(20px) saturate(150%); -webkit-backdrop-filter:blur(20px) saturate(150%); }
   }
-  .label { font:600 11px/1 var(--mono); letter-spacing:.15em; text-transform:uppercase; color:var(--dim); }
-  .card-body { padding:16px; }
 
-  /* the blob is the point of the page */
+  .bar {
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:12px 16px; flex-wrap:wrap;
+    padding:15px 20px;
+    border-bottom:1px solid var(--line);
+  }
+  .label {
+    font:500 10.5px/1 var(--mono);
+    letter-spacing:.2em; text-transform:uppercase; color:var(--dimmer);
+    white-space:nowrap;
+  }
+  .meta {
+    font:12.5px/1.4 var(--mono); color:var(--dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .body { padding:20px; }
+
+  /* ---- the blob: a copy field, not body text ---------------------------- */
+  /* Borrowed from API-key screens: a short line of context, then the value in
+     a bordered inset field, then a labelled copy button hard against it. The
+     value is thousands of characters, so the field caps at a few lines and
+     fades out — nobody reads this string, they copy it. */
+  .above { margin:0 0 11px; color:var(--dim); font-size:13.5px; }
+  .above b { color:var(--ink); font-weight:550; }
+
+  .field { position:relative; }
+  .field::after {
+    content:""; position:absolute; left:1px; right:1px; bottom:1px; height:52px;
+    border-radius:0 0 13px 13px; pointer-events:none;
+    background:linear-gradient(180deg, rgba(1,4,14,0), rgba(1,4,14,.55) 45%, rgba(1,4,14,.95));
+  }
+
   .blob {
-    display:block; width:100%;
-    font:13px/1.65 var(--mono);
-    color:var(--ink);
-    background:var(--bg);
-    border:1px solid var(--line-2);
-    border-radius:10px;
-    padding:14px;
-    max-height:280px; overflow:auto;
+    display:block; width:100%; margin:0;
+    font:13px/1.7 var(--mono); letter-spacing:0;
+    color:#dbe4f0;
+    background:var(--well);
+    border:1px solid var(--line);
+    border-radius:var(--r-md);
+    padding:15px 16px;
+    max-height:152px; overflow:auto;
     overflow-wrap:anywhere; word-break:break-all; white-space:pre-wrap;
     user-select:all; -webkit-user-select:all;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.55);
+    scrollbar-width:thin; scrollbar-color:var(--line-2) transparent;
   }
-  .blob::selection, .blob *::selection { background:rgba(77,163,255,.32); }
+  .blob::selection, .blob *::selection { background:var(--accent-soft); color:#fff; }
+  .blob::-webkit-scrollbar { width:10px; height:10px; }
+  .blob::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
+
+  .actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; }
+  .hint { color:var(--dimmer); font-size:13.5px; }
 
   button {
-    font:600 15px/1 inherit; color:#04070c; background:var(--accent);
-    border:1px solid var(--accent); border-radius:10px;
-    padding:0 18px; height:44px; min-width:132px; cursor:pointer;
-    transition:filter .12s ease;
+    font:590 15px/1 var(--sans); letter-spacing:-.01em;
+    color:var(--accent-ink); background:var(--accent);
+    border:1px solid rgba(255,255,255,.14); border-radius:var(--r-sm);
+    padding:0 20px; height:46px; min-width:140px;
+    cursor:pointer; -webkit-tap-highlight-color:transparent;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 22px -12px rgba(34,197,94,.9);
+    transition:transform .16s cubic-bezier(.16,1,.3,1), filter .16s ease, background .16s ease, color .16s ease;
   }
-  button:hover { filter:brightness(1.08); }
-  button:active { filter:brightness(.92); }
-  button.done { background:transparent; color:var(--accent); }
-  .actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; }
-  .actions .hint { color:var(--dimmer); font-size:13px; }
+  button:hover { filter:brightness(1.07); }
+  button:active { transform:scale(.975); filter:brightness(.94); }
+  button.done {
+    background:transparent; color:var(--accent);
+    border-color:var(--accent-line);
+    box-shadow:inset 0 0 0 1px rgba(34,197,94,.08);
+  }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
 
-  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:16px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; }
   .chip {
-    font:12px/1 var(--mono); letter-spacing:.04em;
-    color:var(--ink); background:var(--panel-3);
-    border:1px solid var(--line-2); border-radius:999px; padding:7px 11px;
+    font:11.5px/1 var(--mono); letter-spacing:.06em;
+    color:var(--dim); background:rgba(255,255,255,.035);
+    border:1px solid var(--line); border-radius:999px;
+    padding:7px 11px 6px;
   }
 
-  .stat { color:var(--dim); font-size:13.5px; }
-  .stat b { color:var(--ink); font-weight:600; }
+  .session {
+    margin:16px 0 0; color:var(--dim); font-size:13.5px;
+  }
+  .session b { color:var(--ink); font-weight:550; }
 
-  /* "not yet" — a plain waiting state, not an error */
-  .waiting { padding:22px 16px; }
-  .waiting p { margin:0 0 10px; }
-  .waiting p:last-child { margin-bottom:0; color:var(--dim); font-size:14px; }
-  .waiting .big { font-size:16.5px; color:var(--ink); }
+  /* ---- "not yet": an empty state, never an error ----------------------- */
+  /* Muted glyph, one heading, one quiet line — and the countdown directly
+     below it as the constructive next step, on the same inset ground. No
+     alert colour, no warning language: this is "not yet". */
+  .empty { padding:8px 0 0; }
+  .glyph {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:40px; height:40px; border-radius:12px;
+    color:var(--dim);
+    background:rgba(255,255,255,.035);
+    border:1px solid var(--line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+  }
+  .glyph svg { display:block; }
+  .glyph .tick { color:var(--accent); }
 
-  .countdown { font:600 34px/1.05 var(--mono); letter-spacing:-.02em; margin:2px 0 14px; }
-  .times { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+  .empty .big {
+    font-size:clamp(18px,4.4vw,21px); line-height:1.4; font-weight:500;
+    letter-spacing:-.018em; color:var(--ink);
+    max-width:34ch; margin:16px 0 0;
+  }
+  .empty .small { margin:9px 0 0; color:var(--dim); font-size:14.5px; max-width:52ch; }
+
+  /* Waiting: body and schedule read as one composition, no seam between them. */
+  .panel.is-waiting .body { padding-bottom:6px; }
+  .panel.is-waiting .strip { border-top:0; background:transparent; padding-top:18px; }
+  .panel.is-waiting .strip-head .label { display:none; }
+  .panel.is-waiting .countdown { margin-top:0; }
+
+  /* ---- schedule strip, same panel, hairline below the blob -------------- */
+  .strip { border-top:1px solid var(--line); padding:18px 20px 20px; background:rgba(255,255,255,.014); }
+  .strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .strip-head .meta { color:var(--dimmer); font-size:12px; }
+
+  .countdown {
+    font:600 clamp(30px,8vw,44px)/1 var(--mono);
+    letter-spacing:-.035em; font-variant-numeric:tabular-nums;
+    margin:12px 0 18px; color:var(--ink);
+  }
+  .panel:not(.is-waiting) .countdown { font-size:clamp(24px,5.2vw,32px); margin:10px 0 16px; }
+
+  .times { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
   .time {
-    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:11px 13px;
+    background:rgba(255,255,255,.028);
+    border:1px solid var(--line);
+    border-radius:var(--r-md);
+    padding:12px 14px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
   }
-  .time .zone { font:600 10.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--dimmer); }
-  .time .when { font:15px/1.3 var(--mono); margin-top:7px; color:var(--ink); }
-  .caveat { color:var(--dim); font-size:13.5px; margin:14px 0 0; }
+  .time .zone {
+    font:500 10px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--dimmer);
+  }
+  .time .when {
+    font:15px/1.3 var(--mono); margin-top:8px; color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
 
-  .notes { margin-top:18px; display:grid; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
-  .note { background:var(--panel); padding:15px 16px; }
-  .note h3 { margin:0 0 5px; font-size:13.5px; font-weight:600; letter-spacing:.01em; }
-  .note p { margin:0; color:var(--dim); font-size:13.5px; }
+  .caveat { color:var(--dimmer); font-size:13px; line-height:1.6; margin:14px 2px 0; max-width:70ch; }
 
-  footer { margin-top:26px; color:var(--dimmer); font-size:12.5px; }
+  /* ---- notes ------------------------------------------------------------ */
+  .notes {
+    margin-top:26px;
+    display:grid; gap:1px;
+    grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+    background:var(--line);
+    border:1px solid var(--line);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+  }
+  .note { background:var(--bg); padding:18px 18px 20px; }
+  .note h2 {
+    margin:0 0 7px; font-size:13.5px; font-weight:600; letter-spacing:-.012em; color:var(--ink);
+  }
+  .note p { margin:0; color:var(--dim); font-size:13.5px; line-height:1.6; }
+
+  footer {
+    margin-top:28px; color:var(--dimmer); font-size:12.5px; line-height:1.7;
+  }
   footer a { color:var(--dim); text-decoration:none; border-bottom:1px solid var(--line-2); }
-  footer a:hover { color:var(--accent); border-color:var(--accent); }
+  footer a:hover { color:var(--accent); border-color:var(--accent-line); }
+
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
-  @media (max-width:560px) {
-    body { padding:0 14px 56px; }
-    header { padding:34px 0 16px; }
-    h1 { font-size:22px; }
-    .countdown { font-size:27px; }
-    .blob { font-size:12.5px; max-height:220px; }
+  @media (max-width:600px) {
+    body { padding:0 16px calc(60px + env(safe-area-inset-bottom)); font-size:15.5px; }
+    header { padding:40px 0 20px; }
+    .panel { margin-top:24px; }
+    .bar, .body { padding-left:16px; padding-right:16px; }
+    .strip { padding:16px 16px 18px; }
+    .blob { font-size:12.5px; max-height:132px; padding:13px; }
+    .actions { gap:12px; }
     button { width:100%; }
+    .hint { font-size:13px; }
+    .notes { margin-top:22px; }
+  }
+
+  @media (prefers-reduced-motion:reduce) {
+    * { animation:none !important; transition:none !important; }
   }
 </style>
 </head>
@@ -138,48 +305,48 @@
 <div class="wrap">
 
   <header>
-    <div class="brand"><span class="dot"></span> Gexicon</div>
+    <div class="brand"><span class="pulse"><i></i></span> Gexicon</div>
     <h1>The data blob</h1>
-    <p class="sub">One line of text, rebuilt five times a session. Copy it into the indicator's <b>GEX data blob</b> setting — that is the whole workflow.</p>
+    <p class="sub">One line of text, rebuilt five times a session. Copy it into the indicator&rsquo;s <b>GEX data blob</b> setting &mdash; that is the whole workflow.</p>
   </header>
 
-  <section class="card" id="blob-card" aria-live="polite">
-    <div class="card-head">
+  <section class="panel" id="blob-card">
+    <div class="bar">
       <span class="label">latest.blob</span>
-      <span class="stat" id="blob-stat">Loading&hellip;</span>
+      <span class="meta" id="blob-stat">Loading&hellip;</span>
     </div>
-    <div class="card-body" id="blob-body">
-      <p class="stat" style="margin:0">Reading the file&hellip;</p>
-    </div>
-  </section>
 
-  <section class="card">
-    <div class="card-head">
-      <span class="label">Next scheduled run</span>
-      <span class="stat" id="run-note"></span>
+    <div class="body" id="blob-body" aria-live="polite">
+      <p class="meta" style="margin:0">Reading the file&hellip;</p>
     </div>
-    <div class="card-body">
+
+    <div class="strip">
+      <div class="strip-head">
+        <span class="label">Next scheduled run</span>
+        <span class="meta" id="run-note"></span>
+      </div>
       <div class="countdown" id="countdown">&mdash;</div>
       <div class="times">
         <div class="time"><div class="zone" id="local-zone">Your time</div><div class="when" id="local-when">&mdash;</div></div>
         <div class="time"><div class="zone">New York</div><div class="when" id="ny-when">&mdash;</div></div>
       </div>
-      <p class="caveat">Five runs a session, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
     </div>
   </section>
 
+  <p class="caveat">Five runs a session, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
+
   <div class="notes">
     <div class="note">
-      <h3>The indicator fetches nothing</h3>
+      <h2>The indicator fetches nothing</h2>
       <p>Pine Script cannot make network requests. Everything the indicator draws comes from this one line of text in its settings.</p>
     </div>
     <div class="note">
-      <h3>Open interest is a prior-night snapshot</h3>
+      <h2>Open interest is a prior-night snapshot</h2>
       <p>It does not move during the session, so copying this once in the morning is enough. Later runs only refresh spot and the odds.</p>
     </div>
     <div class="note">
-      <h3>Touch odds are a price, not a forecast</h3>
-      <p>They are what the options market charges for that outcome. Not a prediction and not a win rate — the downside is priced up because people pay for protection.</p>
+      <h2>Touch odds are a price, not a forecast</h2>
+      <p>They are what the options market charges for that outcome. Not a prediction and not a win rate &mdash; the downside is priced up because people pay for protection.</p>
     </div>
   </div>
 
@@ -290,6 +457,7 @@
   }
 
   // --- the next-run panel -------------------------------------------------
+  var elPanel = document.getElementById("blob-card");
   var elCountdown = document.getElementById("countdown");
   var elLocal = document.getElementById("local-when");
   var elLocalZone = document.getElementById("local-zone");
@@ -330,12 +498,25 @@
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
+  // "Not yet" is a held breath, not an error: the standby rail keeps the one
+  // accent colour, and the schedule strip below becomes the live thing on the
+  // page — which is why the panel gets .is-waiting.
+  var GLYPH =
+    '<span class="glyph" aria-hidden="true">' +
+    '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.5" stroke-linecap="round">' +
+    '<circle cx="12" cy="12" r="9" opacity=".55"></circle>' +
+    '<path d="M12 7.2V12l3.1 1.9"></path>' +
+    '</svg></span>';
+
   function waiting(headline, detail) {
     elStat.textContent = "not published yet";
+    elPanel.classList.add("is-waiting");
     elBody.innerHTML =
-      '<div class="waiting">' +
+      '<div class="empty">' +
+      GLYPH +
       '<p class="big">' + esc(headline) + '</p>' +
-      '<p>' + esc(detail) + '</p>' +
+      '<p class="small">' + esc(detail) + '</p>' +
       '</div>';
   }
 
@@ -360,6 +541,7 @@
 
   function render(text) {
     var info = parseBlob(text);
+    elPanel.classList.remove("is-waiting");
 
     var stats = [];
     if (info.stamp) {
@@ -369,10 +551,12 @@
     stats.push(sizeText(text.length));
     elStat.innerHTML = stats.map(function (s) { return esc(s); }).join(" · ");
 
-    var html = '<pre class="blob" id="blob-text" tabindex="0">' + esc(text) + '</pre>' +
+    var html =
+      '<p class="above">Paste this into the indicator’s <b>GEX data blob</b> setting.</p>' +
+      '<div class="field"><pre class="blob" id="blob-text" tabindex="0">' + esc(text) + '</pre></div>' +
       '<div class="actions">' +
       '<button id="copy" type="button">Copy blob</button>' +
-      '<span class="hint" id="copy-hint">Paste into the indicator’s GEX data blob setting.</span>' +
+      '<span class="hint" id="copy-hint">Copies the whole line, not just the part you can see.</span>' +
       '</div>';
 
     if (info.symbols.length) {
@@ -381,9 +565,9 @@
         '</div>';
     }
     if (info.session) {
-      html += '<p class="stat" style="margin:14px 0 0">Session ' +
+      html += '<p class="session">Session <b>' +
         esc(new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(info.session)) +
-        '.</p>';
+        '</b>.</p>';
     }
     elBody.innerHTML = html;
 
@@ -431,6 +615,10 @@
     } catch (e) { return false; }
   }
 
+  // The countdown and both zone cards render directly beneath the empty state,
+  // so this line points at them rather than restating the same clock time.
+  var NEXT_LINE = "The countdown below is to the next scheduled run.";
+
   function nextRunSentence() {
     var next = nextRun(new Date());
     if (!next) return "";
@@ -448,22 +636,23 @@
     .then(function (text) {
       if (text === null) {
         waiting("No run has succeeded yet, so there is no blob to copy.",
-                nextRunSentence());
+                NEXT_LINE);
         return;
       }
       text = text.trim();
       if (!text) {
         waiting("The file is there but empty, so there is nothing to copy yet.",
-                nextRunSentence());
+                NEXT_LINE);
         return;
       }
       render(text);
     })
     .catch(function (err) {
       elStat.textContent = "could not read the file";
-      elBody.innerHTML = '<div class="waiting">' +
-        '<p class="big">This page could not read latest.blob (' + esc(err.message) + ').</p>' +
-        '<p>The raw file link at the bottom of the page is the fallback. ' + esc(nextRunSentence()) + '</p>' +
+      elPanel.classList.remove("is-waiting");
+      elBody.innerHTML = '<div class="empty">' +
+        '<p class="big" style="margin-top:0">This page could not read latest.blob (' + esc(err.message) + ').</p>' +
+        '<p class="small">The raw file link at the bottom of the page is the fallback. ' + esc(nextRunSentence()) + '</p>' +
         '</div>';
     });
 })();
