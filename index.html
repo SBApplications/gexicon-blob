@@ -28,6 +28,13 @@
     --accent-ink:#03170b;
     --accent-soft:rgba(34,197,94,.14);
     --accent-line:rgba(34,197,94,.32);
+    /* The copy button runs its own colour. It is the one action on the page,
+       and blue keeps it distinct from the green used for the brand mark and
+       links. Light blue over dark ink, the same pattern as the accent, so the
+       label stays legible on the slate ground. */
+    --btn:#58a6ff;
+    --btn-ink:#04131f;
+    --btn-line:rgba(88,166,255,.32);
 
     --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,ui-sans-serif,sans-serif;
     --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
@@ -171,19 +178,19 @@
 
   button {
     font:590 15px/1 var(--sans); letter-spacing:-.01em;
-    color:var(--accent-ink); background:var(--accent);
+    color:var(--btn-ink); background:var(--btn);
     border:1px solid rgba(255,255,255,.14); border-radius:var(--r-sm);
     padding:0 20px; height:46px; min-width:140px;
     cursor:pointer; -webkit-tap-highlight-color:transparent;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 22px -12px rgba(34,197,94,.9);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 22px -12px rgba(88,166,255,.9);
     transition:transform .16s cubic-bezier(.16,1,.3,1), filter .16s ease, background .16s ease, color .16s ease;
   }
   button:hover { filter:brightness(1.07); }
   button:active { transform:scale(.975); filter:brightness(.94); }
   button.done {
-    background:transparent; color:var(--accent);
-    border-color:var(--accent-line);
-    box-shadow:inset 0 0 0 1px rgba(34,197,94,.08);
+    background:transparent; color:var(--btn);
+    border-color:var(--btn-line);
+    box-shadow:inset 0 0 0 1px rgba(88,166,255,.08);
   }
   :focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
 
