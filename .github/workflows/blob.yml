@@ -1,0 +1,74 @@
+name: build blob
+
+# Five runs across the US session, in UTC because GitHub cron has no timezone.
+# The minutes are deliberately off :00 and :30 — scheduled jobs bunch on the
+# hour and GitHub delays the queue, so an odd minute lands closer to on time.
+#
+# These are EDT (UTC-4). In EST they fire an hour earlier in New York terms;
+# the blob still refreshes five times a session, just shifted, and nothing
+# downstream depends on the exact minute.
+on:
+  schedule:
+    - cron: '7 14 * * 1-5'    # 10:07 ET
+    - cron: '37 15 * * 1-5'   # 11:37 ET
+    - cron: '7 17 * * 1-5'    # 13:07 ET
+    - cron: '37 18 * * 1-5'   # 14:37 ET
+    - cron: '7 20 * * 1-5'    # 16:07 ET
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: blob
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No setup-python step and no requirements file: the package is standard
+      # library only, on purpose, so the runner's own interpreter is enough.
+      - name: Python version
+        run: python3 -VV
+
+      - name: Build the blob
+        run: |
+          set -o pipefail
+          python3 -m gexicon > blob.tmp
+          test -s blob.tmp
+
+      - name: Check it before committing anything
+        run: |
+          blob=$(cat blob.tmp)
+          case "$blob" in
+            NSGEX2\|*) ;;
+            *) echo "::error::not an NSGEX2 blob"; exit 1 ;;
+          esac
+          # Records start after the three header fields. Fewer than the symbol
+          # list means a symbol failed to fetch, and a short blob must fail the
+          # run rather than quietly replace a complete one.
+          n=$(awk -F'|' '{print NF-3}' blob.tmp)
+          echo "records: $n"
+          test "$n" -ge 9 || { echo "::error::only $n records, expected 9"; exit 1; }
+          grep -q 'WC[0-9]' blob.tmp || { echo "::error::no wall tokens"; exit 1; }
+          echo "bytes: $(wc -c < blob.tmp)"
+
+      - name: Commit if it changed
+        run: |
+          mv blob.tmp latest.blob
+          git config user.name  "SBApplications"
+          git config user.email "273117584+SBApplications@users.noreply.github.com"
+          if git diff --quiet -- latest.blob; then
+            echo "unchanged, nothing to commit"
+            exit 0
+          fi
+          # The commit history of this one file IS the archive: every run keeps
+          # the levels as they stood, timestamped, at a few KB each. Nothing
+          # else is stored — the raw chains are archived server-side elsewhere
+          # and would put a gigabyte a year into this repo.
+          git add latest.blob
+          git commit -m "blob $(cut -d'|' -f2 latest.blob)"
+          git push
