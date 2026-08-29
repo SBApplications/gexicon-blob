@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Gexicon data blob</title>
+<style>
+  :root {
+    --bg:#08090b;
+    --panel:#101216;
+    --panel-2:#161920;
+    --panel-3:#1b1f27;
+    --line:#20242c;
+    --line-2:#2a303a;
+    --ink:#e9ebee;
+    --dim:#878e99;
+    --dimmer:#5f6672;
+    --accent:#4da3ff;
+    --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font:15px/1.55 ui-sans-serif,-apple-system,"SF Pro Text",Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:0 18px 72px;
+  }
+  /* one soft accent wash at the top, nothing else decorative */
+  body::before {
+    content:""; position:fixed; inset:0 0 auto 0; height:340px; pointer-events:none;
+    background:radial-gradient(90% 100% at 50% 0%, rgba(77,163,255,.10), transparent 70%);
+  }
+  .wrap { position:relative; max-width:940px; margin:0 auto; }
+
+  header { padding:46px 0 22px; }
+  .brand {
+    display:flex; align-items:center; gap:10px;
+    font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
+    color:var(--dim);
+  }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px rgba(77,163,255,.8); }
+  h1 { font-size:26px; font-weight:600; letter-spacing:-.02em; margin:14px 0 8px; }
+  .sub { color:var(--dim); font-size:14.5px; max-width:60ch; margin:0; }
+
+  .card {
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    margin-top:18px;
+    overflow:hidden;
+  }
+  .card-head {
+    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    padding:13px 16px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel-2);
+  }
+  .label { font:600 11px/1 var(--mono); letter-spacing:.15em; text-transform:uppercase; color:var(--dim); }
+  .card-body { padding:16px; }
+
+  /* the blob is the point of the page */
+  .blob {
+    display:block; width:100%;
+    font:13px/1.65 var(--mono);
+    color:var(--ink);
+    background:var(--bg);
+    border:1px solid var(--line-2);
+    border-radius:10px;
+    padding:14px;
+    max-height:280px; overflow:auto;
+    overflow-wrap:anywhere; word-break:break-all; white-space:pre-wrap;
+    user-select:all; -webkit-user-select:all;
+  }
+  .blob::selection, .blob *::selection { background:rgba(77,163,255,.32); }
+
+  button {
+    font:600 15px/1 inherit; color:#04070c; background:var(--accent);
+    border:1px solid var(--accent); border-radius:10px;
+    padding:0 18px; height:44px; min-width:132px; cursor:pointer;
+    transition:filter .12s ease;
+  }
+  button:hover { filter:brightness(1.08); }
+  button:active { filter:brightness(.92); }
+  button.done { background:transparent; color:var(--accent); }
+  .actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; }
+  .actions .hint { color:var(--dimmer); font-size:13px; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:16px; }
+  .chip {
+    font:12px/1 var(--mono); letter-spacing:.04em;
+    color:var(--ink); background:var(--panel-3);
+    border:1px solid var(--line-2); border-radius:999px; padding:7px 11px;
+  }
+
+  .stat { color:var(--dim); font-size:13.5px; }
+  .stat b { color:var(--ink); font-weight:600; }
+
+  /* "not yet" — a plain waiting state, not an error */
+  .waiting { padding:22px 16px; }
+  .waiting p { margin:0 0 10px; }
+  .waiting p:last-child { margin-bottom:0; color:var(--dim); font-size:14px; }
+  .waiting .big { font-size:16.5px; color:var(--ink); }
+
+  .countdown { font:600 34px/1.05 var(--mono); letter-spacing:-.02em; margin:2px 0 14px; }
+  .times { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+  .time {
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:11px 13px;
+  }
+  .time .zone { font:600 10.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--dimmer); }
+  .time .when { font:15px/1.3 var(--mono); margin-top:7px; color:var(--ink); }
+  .caveat { color:var(--dim); font-size:13.5px; margin:14px 0 0; }
+
+  .notes { margin-top:18px; display:grid; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .note { background:var(--panel); padding:15px 16px; }
+  .note h3 { margin:0 0 5px; font-size:13.5px; font-weight:600; letter-spacing:.01em; }
+  .note p { margin:0; color:var(--dim); font-size:13.5px; }
+
+  footer { margin-top:26px; color:var(--dimmer); font-size:12.5px; }
+  footer a { color:var(--dim); text-decoration:none; border-bottom:1px solid var(--line-2); }
+  footer a:hover { color:var(--accent); border-color:var(--accent); }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+  @media (max-width:560px) {
+    body { padding:0 14px 56px; }
+    header { padding:34px 0 16px; }
+    h1 { font-size:22px; }
+    .countdown { font-size:27px; }
+    .blob { font-size:12.5px; max-height:220px; }
+    button { width:100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand"><span class="dot"></span> Gexicon</div>
+    <h1>The data blob</h1>
+    <p class="sub">One line of text, rebuilt five times a session. Copy it into the indicator's <b>GEX data blob</b> setting — that is the whole workflow.</p>
+  </header>
+
+  <section class="card" id="blob-card" aria-live="polite">
+    <div class="card-head">
+      <span class="label">latest.blob</span>
+      <span class="stat" id="blob-stat">Loading&hellip;</span>
+    </div>
+    <div class="card-body" id="blob-body">
+      <p class="stat" style="margin:0">Reading the file&hellip;</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <span class="label">Next scheduled run</span>
+      <span class="stat" id="run-note"></span>
+    </div>
+    <div class="card-body">
+      <div class="countdown" id="countdown">&mdash;</div>
+      <div class="times">
+        <div class="time"><div class="zone" id="local-zone">Your time</div><div class="when" id="local-when">&mdash;</div></div>
+        <div class="time"><div class="zone">New York</div><div class="when" id="ny-when">&mdash;</div></div>
+      </div>
+      <p class="caveat">Five runs a session, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
+    </div>
+  </section>
+
+  <div class="notes">
+    <div class="note">
+      <h3>The indicator fetches nothing</h3>
+      <p>Pine Script cannot make network requests. Everything the indicator draws comes from this one line of text in its settings.</p>
+    </div>
+    <div class="note">
+      <h3>Open interest is a prior-night snapshot</h3>
+      <p>It does not move during the session, so copying this once in the morning is enough. Later runs only refresh spot and the odds.</p>
+    </div>
+    <div class="note">
+      <h3>Touch odds are a price, not a forecast</h3>
+      <p>They are what the options market charges for that outcome. Not a prediction and not a win rate — the downside is priced up because people pay for protection.</p>
+    </div>
+  </div>
+
+  <footer>
+    Built five times a session by <a href="https://github.com/SBApplications/gexicon-blob">SBApplications/gexicon-blob</a>.
+    Raw file: <a href="https://raw.githubusercontent.com/SBApplications/gexicon-blob/main/latest.blob">latest.blob</a>.
+    <noscript><br>JavaScript is off, so this page cannot read the blob. Use the raw file link above.</noscript>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // --- the schedule -------------------------------------------------------
+  // Taken from .github/workflows/blob.yml. GitHub cron has no timezone, so
+  // these are UTC and the New York clock time shifts with daylight saving —
+  // which is why nothing here is hardcoded in ET.
+  //   cron: '7 14 * * 1-5'
+  //   cron: '37 15 * * 1-5'
+  //   cron: '7 17 * * 1-5'
+  //   cron: '37 18 * * 1-5'
+  //   cron: '7 20 * * 1-5'
+  var SLOTS = [[14, 7], [15, 37], [17, 7], [18, 37], [20, 7]]; // [UTC hour, minute]
+  var WEEKDAYS = [1, 2, 3, 4, 5]; // cron 1-5, Monday to Friday, in UTC
+  var LATE_GRACE_MS = 25 * 60 * 1000; // how long a fired slot still reads as "due"
+
+  function isRunDay(d) {
+    return WEEKDAYS.indexOf(d.getUTCDay()) !== -1;
+  }
+
+  function slotsOn(dayMs) {
+    var d = new Date(dayMs), out = [];
+    if (!isRunDay(d)) return out;
+    for (var i = 0; i < SLOTS.length; i++) {
+      out.push(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(),
+                        SLOTS[i][0], SLOTS[i][1], 0, 0));
+    }
+    return out;
+  }
+
+  function dayOffset(now, n) {
+    return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + n);
+  }
+
+  function nextRun(now) {
+    for (var n = 0; n < 12; n++) {
+      var s = slotsOn(dayOffset(now, n));
+      for (var i = 0; i < s.length; i++) if (s[i] > now.getTime()) return new Date(s[i]);
+    }
+    return null;
+  }
+
+  function lastRun(now) {
+    for (var n = 0; n < 12; n++) {
+      var s = slotsOn(dayOffset(now, -n));
+      for (var i = s.length - 1; i >= 0; i--) if (s[i] <= now.getTime()) return new Date(s[i]);
+    }
+    return null;
+  }
+
+  // --- formatting ---------------------------------------------------------
+  function fmtIn(date, tz) {
+    var opts = { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false };
+    if (tz) opts.timeZone = tz;
+    try { return new Intl.DateTimeFormat(undefined, opts).format(date); }
+    catch (e) { return date.toISOString().slice(0, 16).replace("T", " ") + " UTC"; }
+  }
+
+  function localZoneName() {
+    try {
+      var parts = new Intl.DateTimeFormat(undefined, {
+        timeZoneName: "short", hour: "2-digit"
+      }).formatToParts(new Date());
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type === "timeZoneName") return "Your time · " + parts[i].value;
+      }
+    } catch (e) {}
+    return "Your time";
+  }
+
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+  function countdownText(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h >= 24) {
+      var d = Math.floor(h / 24);
+      return d + "d " + (h % 24) + "h " + pad(m) + "m";
+    }
+    return h + "h " + pad(m) + "m " + pad(sec) + "s";
+  }
+
+  function ageText(ms) {
+    var m = Math.round(ms / 60000);
+    if (m < 1) return "just now";
+    if (m === 1) return "1 minute ago";
+    if (m < 60) return m + " minutes ago";
+    var h = Math.floor(m / 60);
+    if (h < 24) return h === 1 ? "1 hour ago" : h + " hours ago";
+    var d = Math.floor(h / 24);
+    return d === 1 ? "1 day ago" : d + " days ago";
+  }
+
+  function sizeText(bytes) {
+    return bytes < 1024 ? bytes + " bytes" : (bytes / 1024).toFixed(1) + " KB";
+  }
+
+  // --- the next-run panel -------------------------------------------------
+  var elCountdown = document.getElementById("countdown");
+  var elLocal = document.getElementById("local-when");
+  var elLocalZone = document.getElementById("local-zone");
+  var elNY = document.getElementById("ny-when");
+  var elRunNote = document.getElementById("run-note");
+
+  elLocalZone.textContent = localZoneName();
+
+  function paintSchedule() {
+    var now = new Date();
+    var next = nextRun(now);
+    var prev = lastRun(now);
+    var dueFor = prev ? now.getTime() - prev.getTime() : Infinity;
+
+    if (dueFor < LATE_GRACE_MS) {
+      elCountdown.textContent = "due now";
+      elRunNote.textContent = "fired " + Math.max(1, Math.round(dueFor / 60000)) + " min ago, may still be queued";
+      elLocal.textContent = fmtIn(prev, null);
+      elNY.textContent = fmtIn(prev, "America/New_York");
+      return;
+    }
+
+    if (!next) { elCountdown.textContent = "—"; return; }
+    elCountdown.textContent = "in " + countdownText(next.getTime() - now.getTime());
+    elRunNote.textContent = "";
+    elLocal.textContent = fmtIn(next, null);
+    elNY.textContent = fmtIn(next, "America/New_York");
+  }
+
+  paintSchedule();
+  setInterval(paintSchedule, 1000);
+
+  // --- the blob -----------------------------------------------------------
+  var elBody = document.getElementById("blob-body");
+  var elStat = document.getElementById("blob-stat");
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function waiting(headline, detail) {
+    elStat.textContent = "not published yet";
+    elBody.innerHTML =
+      '<div class="waiting">' +
+      '<p class="big">' + esc(headline) + '</p>' +
+      '<p>' + esc(detail) + '</p>' +
+      '</div>';
+  }
+
+  // header: NSGEX2|YYYYMMDDHHMMZ|YYYYMMDD|record|record|...
+  function parseBlob(text) {
+    var out = { raw: text, stamp: null, session: null, symbols: [] };
+    var f = text.split("|");
+    if (f[0] !== "NSGEX2") return out;
+    var m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})Z$/.exec(f[1] || "");
+    if (m) {
+      out.stamp = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    }
+    var d = /^(\d{4})(\d{2})(\d{2})$/.exec(f[2] || "");
+    if (d) out.session = new Date(Date.UTC(+d[1], +d[2] - 1, +d[3], 12));
+    for (var i = 3; i < f.length; i++) {
+      // a record is TICKER,spot,flip,net,... with ;-separated expiry buckets after
+      var t = f[i].split(";")[0].split(",")[0];
+      if (/^[A-Z][A-Z.\-]{0,7}$/.test(t) && out.symbols.indexOf(t) === -1) out.symbols.push(t);
+    }
+    return out;
+  }
+
+  function render(text) {
+    var info = parseBlob(text);
+
+    var stats = [];
+    if (info.stamp) {
+      stats.push("stamped " + fmtIn(info.stamp, "UTC") + " UTC");
+      stats.push(ageText(Date.now() - info.stamp.getTime()));
+    }
+    stats.push(sizeText(text.length));
+    elStat.innerHTML = stats.map(function (s) { return esc(s); }).join(" · ");
+
+    var html = '<pre class="blob" id="blob-text" tabindex="0">' + esc(text) + '</pre>' +
+      '<div class="actions">' +
+      '<button id="copy" type="button">Copy blob</button>' +
+      '<span class="hint" id="copy-hint">Paste into the indicator’s GEX data blob setting.</span>' +
+      '</div>';
+
+    if (info.symbols.length) {
+      html += '<div class="chips" aria-label="symbols in this blob">' +
+        info.symbols.map(function (s) { return '<span class="chip">' + esc(s) + '</span>'; }).join("") +
+        '</div>';
+    }
+    if (info.session) {
+      html += '<p class="stat" style="margin:14px 0 0">Session ' +
+        esc(new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(info.session)) +
+        '.</p>';
+    }
+    elBody.innerHTML = html;
+
+    document.getElementById("copy").addEventListener("click", function () {
+      var btn = this, hint = document.getElementById("copy-hint");
+      copy(text, function (ok) {
+        btn.textContent = ok ? "Copied" : "Press ⌘C";
+        btn.classList.add("done");
+        if (!ok) {
+          selectAll(document.getElementById("blob-text"));
+          hint.textContent = "Selected — copy it with your keyboard.";
+        }
+        setTimeout(function () { btn.textContent = "Copy blob"; btn.classList.remove("done"); }, 2200);
+      });
+    });
+  }
+
+  function selectAll(node) {
+    try {
+      var r = document.createRange(); r.selectNodeContents(node);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    } catch (e) {}
+  }
+
+  function copy(text, done) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); },
+                                               function () { done(fallbackCopy(text)); });
+      return;
+    }
+    done(fallbackCopy(text));
+  }
+
+  function fallbackCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta);
+      ta.select(); ta.setSelectionRange(0, text.length);
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) { return false; }
+  }
+
+  function nextRunSentence() {
+    var next = nextRun(new Date());
+    if (!next) return "";
+    return "The next scheduled run is " + fmtIn(next, "America/New_York") +
+           " New York (" + fmtIn(next, null) + " your time).";
+  }
+
+  // same origin, so no CORS; the query string only defeats the CDN cache
+  fetch("./latest.blob?t=" + Date.now(), { cache: "no-store" })
+    .then(function (res) {
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    })
+    .then(function (text) {
+      if (text === null) {
+        waiting("No run has succeeded yet, so there is no blob to copy.",
+                nextRunSentence());
+        return;
+      }
+      text = text.trim();
+      if (!text) {
+        waiting("The file is there but empty, so there is nothing to copy yet.",
+                nextRunSentence());
+        return;
+      }
+      render(text);
+    })
+    .catch(function (err) {
+      elStat.textContent = "could not read the file";
+      elBody.innerHTML = '<div class="waiting">' +
+        '<p class="big">This page could not read latest.blob (' + esc(err.message) + ').</p>' +
+        '<p>The raw file link at the bottom of the page is the fallback. ' + esc(nextRunSentence()) + '</p>' +
+        '</div>';
+    });
+})();
+</script>
+</body>
+</html>
