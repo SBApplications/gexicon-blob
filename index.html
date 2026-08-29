@@ -4,38 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0b0e11">
+<meta name="theme-color" content="#020617">
 <title>Gexicon data blob</title>
 <style>
   :root {
-    /* Ground is charcoal, not black. The near-black is a band colour — the
-       top rail, the code well, the footer — never the page itself. */
-    --bg:#181a20;
-    --band:#0b0e11;
-    --panel:#1e2329;
-    --raise:#2b3139;
+    /* Ground: deep slate, never pure black (OLED smear). */
+    --bg:#020617;
+    --well:#01040e;
+    --surface:#0e1223;
+    --surface-2:#141a2e;
 
-    /* One hairline weight does all the dividing. No shadows, no glass. */
-    --line:#2b3139;
-    --line-2:#3a4049;
+    /* Hairlines are light-on-dark alpha, so they read as edges, not boxes. */
+    --line:rgba(255,255,255,.075);
+    --line-2:rgba(255,255,255,.125);
+    --sheen:rgba(255,255,255,.055);
 
-    --ink:#eaecef;
-    --dim:#848e9c;
-    --dimmer:#5e6673;
+    --ink:#f8fafc;
+    --dim:#94a3b8;
+    --dimmer:#7c8899;
 
-    /* One accent: gold. Green would read as "up" on a trading screen, so it
-       is not available as an interface colour here. Gold appears three times
-       — the brand mark, the section rule, the primary button. */
-    --gold:#fcd535;
-    --gold-hover:#f8d33a;
-    --gold-deep:#f0b90b;
-    --gold-ink:#0b0e11;
+    /* One accent. Green because this page is a pipeline's pulse. */
+    --accent:#22c55e;
+    --accent-ink:#03170b;
+    --accent-soft:rgba(34,197,94,.14);
+    --accent-line:rgba(34,197,94,.32);
 
     --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,ui-sans-serif,sans-serif;
     --mono: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
 
-    --r:8px;
-    --r-sm:4px;
+    --r-lg:20px;
+    --r-md:14px;
+    --r-sm:10px;
   }
 
   * { box-sizing:border-box; }
@@ -45,206 +44,256 @@
     margin:0;
     background:var(--bg);
     color:var(--ink);
-    font:14px/1.6 var(--sans);
-    /* Tabular figures everywhere: nothing on this page should shift width as
-       a digit changes, least of all a countdown ticking once a second. */
-    font-variant-numeric:tabular-nums;
+    font:16px/1.55 var(--sans);
+    letter-spacing:-.005em;
     -webkit-font-smoothing:antialiased;
-    min-height:100dvh;
-    display:flex; flex-direction:column;
+    padding:0 20px calc(80px + env(safe-area-inset-bottom));
+    min-height:100vh;
   }
 
-  .in { width:100%; max-width:920px; margin:0 auto; padding:0 20px; }
+  /* Ambient light: one accent bloom off-centre, one cool lift behind it.
+     Fixed and inert — it is atmosphere, not a component. */
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(60% 44% at 22% -6%, rgba(34,197,94,.13), transparent 62%),
+      radial-gradient(78% 50% at 88% 2%, rgba(79,104,160,.14), transparent 66%);
+  }
 
-  /* ---- top rail --------------------------------------------------------- */
-  .rail { background:var(--band); border-bottom:1px solid var(--line); }
-  .rail .in { display:flex; align-items:center; height:52px; }
+  .wrap { position:relative; z-index:1; max-width:900px; margin:0 auto; }
+
+  /* ---- header ---------------------------------------------------------- */
+  header { padding:56px 0 26px; }
+
   .brand {
-    display:flex; align-items:center; gap:10px;
-    font-size:13px; font-weight:600; letter-spacing:.02em; color:var(--ink);
+    display:flex; align-items:center; gap:9px;
+    font:500 11px/1 var(--mono);
+    letter-spacing:.22em; text-transform:uppercase;
+    color:var(--dim);
   }
-  .mark {
-    width:9px; height:9px; flex:none; transform:rotate(45deg);
-    background:var(--gold);
+  .pulse { position:relative; width:7px; height:7px; flex:none; }
+  .pulse i {
+    position:absolute; inset:0; border-radius:50%;
+    background:var(--accent); box-shadow:0 0 10px rgba(34,197,94,.7);
+  }
+  .pulse::after {
+    content:""; position:absolute; inset:0; border-radius:50%;
+    border:1px solid var(--accent);
+    animation:ring 3.2s cubic-bezier(.16,1,.3,1) infinite;
+  }
+  @keyframes ring {
+    0%   { transform:scale(1);   opacity:.7; }
+    70%  { transform:scale(3.4); opacity:0; }
+    100% { transform:scale(3.4); opacity:0; }
   }
 
-  main { flex:1; padding-bottom:56px; }
-
-  /* ---- header ----------------------------------------------------------- */
-  header { padding:38px 0 24px; }
   h1 {
-    font-size:clamp(26px,5.6vw,34px); font-weight:600;
-    letter-spacing:-.022em; line-height:1.15;
-    margin:0 0 10px;
+    font-size:clamp(28px,6vw,38px); font-weight:600;
+    letter-spacing:-.028em; line-height:1.08;
+    margin:18px 0 10px;
   }
-  .sub { color:var(--dim); font-size:15px; line-height:1.6; max-width:60ch; margin:0; }
-  .sub b { color:var(--ink); font-weight:600; }
+  .sub { color:var(--dim); font-size:15.5px; max-width:56ch; margin:0; }
+  .sub b { color:var(--ink); font-weight:550; }
 
-  /* ---- the one panel ---------------------------------------------------- */
-  /* Flat surface, hairline border, 8px radius. Card sections are divided by
-     the same hairline rather than by separate boxes. */
+  /* ---- the one surface -------------------------------------------------- */
+  /* Blob and schedule live on the same glass panel: they are one story,
+     "what to copy and when the next one lands", not two boxes. */
   .panel {
-    margin-top:26px;
-    background:var(--panel);
+    position:relative;
+    margin-top:30px;
+    border-radius:var(--r-lg);
     border:1px solid var(--line);
-    border-radius:var(--r);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012) 38%, rgba(255,255,255,.008)),
+      var(--surface);
+    box-shadow:
+      inset 0 1px 0 var(--sheen),
+      0 1px 2px rgba(0,0,0,.5),
+      0 26px 60px -32px rgba(0,0,0,.9);
     overflow:hidden;
+  }
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)) {
+    .panel { backdrop-filter:blur(20px) saturate(150%); -webkit-backdrop-filter:blur(20px) saturate(150%); }
   }
 
   .bar {
-    display:flex; align-items:center; justify-content:space-between;
-    gap:8px 16px; flex-wrap:wrap;
-    padding:13px 18px;
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:12px 16px; flex-wrap:wrap;
+    padding:15px 20px;
     border-bottom:1px solid var(--line);
   }
-  /* Card titles are sentence-case near-white, the way Binance heads a panel —
-     not a letterspaced micro-caps label. */
-  .label { font-size:14px; font-weight:600; color:var(--ink); white-space:nowrap; }
-  /* Supporting figures: small, muted, tabular. */
-  .meta { font-size:12px; line-height:1.5; color:var(--dim); }
-  .body { padding:18px; }
+  .label {
+    font:500 10.5px/1 var(--mono);
+    letter-spacing:.2em; text-transform:uppercase; color:var(--dimmer);
+    white-space:nowrap;
+  }
+  .meta {
+    font:12.5px/1.4 var(--mono); color:var(--dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .body { padding:20px; }
 
   /* ---- the blob: a copy field, not body text ---------------------------- */
-  /* The value is thousands of characters. Nobody reads it, they copy it — so
-     the field caps at a few lines and fades into the well it sits in. */
-  .above { margin:0 0 10px; color:var(--dim); font-size:13px; }
-  .above b { color:var(--ink); font-weight:600; }
+  /* Borrowed from API-key screens: a short line of context, then the value in
+     a bordered inset field, then a labelled copy button hard against it. The
+     value is thousands of characters, so the field caps at a few lines and
+     fades out — nobody reads this string, they copy it. */
+  .above { margin:0 0 11px; color:var(--dim); font-size:13.5px; }
+  .above b { color:var(--ink); font-weight:550; }
 
   .field { position:relative; }
   .field::after {
-    content:""; position:absolute; left:1px; right:1px; bottom:1px; height:48px;
-    border-radius:0 0 3px 3px; pointer-events:none;
-    background:linear-gradient(180deg, rgba(11,14,17,0), rgba(11,14,17,.6) 45%, rgba(11,14,17,.97));
+    content:""; position:absolute; left:1px; right:1px; bottom:1px; height:52px;
+    border-radius:0 0 13px 13px; pointer-events:none;
+    background:linear-gradient(180deg, rgba(1,4,14,0), rgba(1,4,14,.55) 45%, rgba(1,4,14,.95));
   }
 
   .blob {
     display:block; width:100%; margin:0;
-    font:12.5px/1.75 var(--mono); letter-spacing:0;
-    color:var(--ink);
-    background:var(--band);
+    font:13px/1.7 var(--mono); letter-spacing:0;
+    color:#dbe4f0;
+    background:var(--well);
     border:1px solid var(--line);
-    border-radius:var(--r-sm);
-    padding:14px 15px;
-    max-height:150px; overflow:auto;
+    border-radius:var(--r-md);
+    padding:15px 16px;
+    max-height:152px; overflow:auto;
     overflow-wrap:anywhere; word-break:break-all; white-space:pre-wrap;
     user-select:all; -webkit-user-select:all;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.55);
     scrollbar-width:thin; scrollbar-color:var(--line-2) transparent;
   }
-  .blob::selection, .blob *::selection { background:rgba(252,213,53,.24); color:#fff; }
+  .blob::selection, .blob *::selection { background:var(--accent-soft); color:#fff; }
   .blob::-webkit-scrollbar { width:10px; height:10px; }
   .blob::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
 
   .actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:14px; }
-  .hint { color:var(--dim); font-size:12.5px; }
+  .hint { color:var(--dimmer); font-size:13.5px; }
 
-  /* Primary action: solid gold, near-black text, 4px radius. The only filled
-     control on the page. */
   button {
-    font:600 14px/1 var(--sans); letter-spacing:-.005em;
-    color:var(--gold-ink); background:var(--gold);
-    border:0; border-radius:var(--r-sm);
-    padding:0 18px; height:40px; min-width:128px;
+    font:590 15px/1 var(--sans); letter-spacing:-.01em;
+    color:var(--accent-ink); background:var(--accent);
+    border:1px solid rgba(255,255,255,.14); border-radius:var(--r-sm);
+    padding:0 20px; height:46px; min-width:140px;
     cursor:pointer; -webkit-tap-highlight-color:transparent;
-    transition:background .14s ease, color .14s ease;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 22px -12px rgba(34,197,94,.9);
+    transition:transform .16s cubic-bezier(.16,1,.3,1), filter .16s ease, background .16s ease, color .16s ease;
   }
-  button:hover { background:var(--gold-hover); }
-  button:active { background:var(--gold-deep); }
-  /* Confirmed state drops to the secondary style rather than inventing a
-     second accent. */
-  button.done { background:var(--raise); color:var(--ink); }
-  button.done:hover { background:var(--line-2); }
-  :focus-visible { outline:2px solid var(--gold); outline-offset:2px; border-radius:2px; }
+  button:hover { filter:brightness(1.07); }
+  button:active { transform:scale(.975); filter:brightness(.94); }
+  button.done {
+    background:transparent; color:var(--accent);
+    border-color:var(--accent-line);
+    box-shadow:inset 0 0 0 1px rgba(34,197,94,.08);
+  }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
 
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; }
   .chip {
-    font:11px/1 var(--mono); letter-spacing:.04em;
-    color:var(--ink); background:var(--raise);
-    border-radius:var(--r-sm);
-    padding:6px 8px;
+    font:11.5px/1 var(--mono); letter-spacing:.06em;
+    color:var(--dim); background:rgba(255,255,255,.035);
+    border:1px solid var(--line); border-radius:999px;
+    padding:7px 11px 6px;
   }
 
-  .session { margin:14px 0 0; color:var(--dim); font-size:13px; }
-  .session b { color:var(--ink); font-weight:600; }
+  .session {
+    margin:16px 0 0; color:var(--dim); font-size:13.5px;
+  }
+  .session b { color:var(--ink); font-weight:550; }
 
-  /* ---- "not yet": an empty state, never an error ------------------------ */
-  /* Centred, muted glyph, one line of what happened, one line of what next.
-     No alert colour and no warning language — this is "not yet". */
-  .empty { text-align:center; padding:24px 0 6px; }
-  .glyph { display:inline-flex; color:var(--dimmer); }
-  .glyph svg { display:block; width:42px; height:42px; }
+  /* ---- "not yet": an empty state, never an error ----------------------- */
+  /* Muted glyph, one heading, one quiet line — and the countdown directly
+     below it as the constructive next step, on the same inset ground. No
+     alert colour, no warning language: this is "not yet". */
+  .empty { padding:8px 0 0; }
+  .glyph {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:40px; height:40px; border-radius:12px;
+    color:var(--dim);
+    background:rgba(255,255,255,.035);
+    border:1px solid var(--line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+  }
+  .glyph svg { display:block; }
+  .glyph .tick { color:var(--accent); }
 
   .empty .big {
-    font-size:16px; line-height:1.5; font-weight:600;
-    letter-spacing:-.01em; color:var(--ink);
-    max-width:40ch; margin:14px auto 0;
+    font-size:clamp(18px,4.4vw,21px); line-height:1.4; font-weight:500;
+    letter-spacing:-.018em; color:var(--ink);
+    max-width:34ch; margin:16px 0 0;
   }
-  .empty .small { margin:7px auto 0; color:var(--dim); font-size:13px; max-width:48ch; }
+  .empty .small { margin:9px 0 0; color:var(--dim); font-size:14.5px; max-width:52ch; }
+
+  /* Waiting: body and schedule read as one composition, no seam between them. */
+  .panel.is-waiting .body { padding-bottom:6px; }
+  .panel.is-waiting .strip { border-top:0; background:transparent; padding-top:18px; }
+  .panel.is-waiting .strip-head .label { display:none; }
+  .panel.is-waiting .countdown { margin-top:0; }
 
   /* ---- schedule strip, same panel, hairline below the blob -------------- */
-  .strip { border-top:1px solid var(--line); padding:16px 18px 18px; }
-  .strip-head { display:flex; align-items:center; justify-content:space-between; gap:10px 14px; flex-wrap:wrap; }
-  /* Section heading inside a card carries a short gold rule — the third and
-     last place gold appears. */
-  .strip-head .label { display:flex; align-items:center; gap:9px; }
-  .strip-head .label::before {
-    content:""; width:3px; height:13px; border-radius:1px; background:var(--gold-deep);
-  }
+  .strip { border-top:1px solid var(--line); padding:18px 20px 20px; background:rgba(255,255,255,.014); }
+  .strip-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .strip-head .meta { color:var(--dimmer); font-size:12px; }
 
   .countdown {
-    font-size:clamp(24px,5.4vw,30px); font-weight:600; line-height:1.1;
-    letter-spacing:-.02em; color:var(--ink);
-    margin:12px 0 16px;
+    font:600 clamp(30px,8vw,44px)/1 var(--mono);
+    letter-spacing:-.035em; font-variant-numeric:tabular-nums;
+    margin:12px 0 18px; color:var(--ink);
   }
-  .panel.is-waiting .countdown { font-size:clamp(30px,7.4vw,40px); margin:14px 0 18px; }
+  .panel:not(.is-waiting) .countdown { font-size:clamp(24px,5.2vw,32px); margin:10px 0 16px; }
 
-  /* Small muted label, value beneath — the Binance stat block. */
-  .times { display:grid; gap:8px; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
+  .times { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
   .time {
-    background:var(--bg);
+    background:rgba(255,255,255,.028);
     border:1px solid var(--line);
-    border-radius:var(--r-sm);
-    padding:10px 12px;
+    border-radius:var(--r-md);
+    padding:12px 14px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
   }
-  .time .zone { font-size:12px; line-height:1.4; color:var(--dim); }
-  .time .when { font-size:15px; font-weight:600; line-height:1.4; margin-top:3px; color:var(--ink); }
+  .time .zone {
+    font:500 10px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--dimmer);
+  }
+  .time .when {
+    font:15px/1.3 var(--mono); margin-top:8px; color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
 
-  .caveat { color:var(--dim); font-size:12.5px; line-height:1.7; margin:14px 1px 0; max-width:76ch; }
+  .caveat { color:var(--dimmer); font-size:13px; line-height:1.6; margin:14px 2px 0; max-width:70ch; }
 
   /* ---- notes ------------------------------------------------------------ */
   .notes {
-    margin-top:24px;
+    margin-top:26px;
     display:grid; gap:1px;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
     background:var(--line);
     border:1px solid var(--line);
-    border-radius:var(--r);
+    border-radius:var(--r-lg);
     overflow:hidden;
   }
-  .note { background:var(--panel); padding:16px 16px 18px; }
-  .note h2 { margin:0 0 6px; font-size:13px; font-weight:600; color:var(--ink); }
-  .note p { margin:0; color:var(--dim); font-size:12.5px; line-height:1.65; }
-
-  /* ---- footer band ------------------------------------------------------ */
-  footer {
-    background:var(--band); border-top:1px solid var(--line);
-    color:var(--dim); font-size:12.5px; line-height:1.8;
+  .note { background:var(--bg); padding:18px 18px 20px; }
+  .note h2 {
+    margin:0 0 7px; font-size:13.5px; font-weight:600; letter-spacing:-.012em; color:var(--ink);
   }
-  footer .in { padding-top:20px; padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
-  footer a { color:var(--ink); text-decoration:none; border-bottom:1px solid var(--line-2); }
-  footer a:hover { color:var(--gold); border-color:var(--gold-deep); }
+  .note p { margin:0; color:var(--dim); font-size:13.5px; line-height:1.6; }
+
+  footer {
+    margin-top:28px; color:var(--dimmer); font-size:12.5px; line-height:1.7;
+  }
+  footer a { color:var(--dim); text-decoration:none; border-bottom:1px solid var(--line-2); }
+  footer a:hover { color:var(--accent); border-color:var(--accent-line); }
 
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
   @media (max-width:600px) {
-    .in { padding:0 16px; }
-    header { padding:30px 0 18px; }
-    .panel { margin-top:20px; }
-    .bar, .body { padding-left:14px; padding-right:14px; }
-    .strip { padding:14px 14px 16px; }
-    .blob { font-size:12px; max-height:132px; padding:12px; }
+    body { padding:0 16px calc(60px + env(safe-area-inset-bottom)); font-size:15.5px; }
+    header { padding:40px 0 20px; }
+    .panel { margin-top:24px; }
+    .bar, .body { padding-left:16px; padding-right:16px; }
+    .strip { padding:16px 16px 18px; }
+    .blob { font-size:12.5px; max-height:132px; padding:13px; }
+    .actions { gap:12px; }
     button { width:100%; }
-    .notes { margin-top:20px; }
-    main { padding-bottom:40px; }
+    .hint { font-size:13px; }
+    .notes { margin-top:22px; }
   }
 
   @media (prefers-reduced-motion:reduce) {
@@ -253,15 +302,10 @@
 </style>
 </head>
 <body>
-
-<div class="rail">
-  <div class="in"><div class="brand"><span class="mark" aria-hidden="true"></span> Gexicon</div></div>
-</div>
-
-<main>
-<div class="in">
+<div class="wrap">
 
   <header>
+    <div class="brand"><span class="pulse"><i></i></span> Gexicon</div>
     <h1>The data blob</h1>
     <p class="sub">One line of text, rebuilt five times a session. Copy it into the indicator&rsquo;s <b>GEX data blob</b> setting &mdash; that is the whole workflow.</p>
   </header>
@@ -306,16 +350,13 @@
     </div>
   </div>
 
-</div>
-</main>
-
-<footer>
-  <div class="in">
+  <footer>
     Built five times a session by <a href="https://github.com/SBApplications/gexicon-blob">SBApplications/gexicon-blob</a>.
     Raw file: <a href="https://raw.githubusercontent.com/SBApplications/gexicon-blob/main/latest.blob">latest.blob</a>.
     <noscript><br>JavaScript is off, so this page cannot read the blob. Use the raw file link above.</noscript>
-  </div>
-</footer>
+  </footer>
+
+</div>
 
 <script>
 (function () {
