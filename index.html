@@ -180,10 +180,23 @@
     font:590 15px/1 var(--sans); letter-spacing:-.01em;
     color:var(--btn-ink); background:var(--btn);
     border:1px solid rgba(255,255,255,.14); border-radius:var(--r-sm);
-    padding:0 20px; height:46px; min-width:140px;
+    padding:0; height:46px; width:46px; flex:0 0 auto;
+    display:inline-flex; align-items:center; justify-content:center;
     cursor:pointer; -webkit-tap-highlight-color:transparent;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 22px -12px rgba(88,166,255,.9);
     transition:transform .16s cubic-bezier(.16,1,.3,1), filter .16s ease, background .16s ease, color .16s ease;
+  }
+  button svg { width:18px; height:18px; display:block; }
+  /* Both marks live in the button; .done swaps them. Nothing rewrites the
+     button's contents, so the icon cannot be destroyed by a label update. */
+  button .ok { display:none; }
+  button.done .ic { display:none; }
+  button.done .ok { display:block; }
+  /* The accessible name. An icon-only control has no visible text, so this
+     carries it for screen readers and is what the handler updates. */
+  .sr {
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
   }
   button:hover { filter:brightness(1.07); }
   button:active { transform:scale(.975); filter:brightness(.94); }
@@ -298,7 +311,7 @@
     .strip { padding:16px 16px 18px; }
     .blob { font-size:12.5px; max-height:132px; padding:13px; }
     .actions { gap:12px; }
-    button { width:100%; }
+    button { width:46px; }
     .hint { font-size:13px; }
     .notes { margin-top:22px; }
   }
@@ -562,7 +575,16 @@
       '<p class="above">Paste this into the indicator’s <b>GEX data blob</b> setting.</p>' +
       '<div class="field"><pre class="blob" id="blob-text" tabindex="0">' + esc(text) + '</pre></div>' +
       '<div class="actions">' +
-      '<button id="copy" type="button">Copy blob</button>' +
+      '<button id="copy" type="button" title="Copy blob">' +
+        '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<rect x="9" y="9" width="11" height="11" rx="2"/>' +
+          '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
+        '</svg>' +
+        '<svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M20 6 9 17l-5-5"/>' +
+        '</svg>' +
+        '<span class="sr" id="copy-label">Copy blob</span>' +
+      '</button>' +
       '<span class="hint" id="copy-hint">Copies the whole line, not just the part you can see.</span>' +
       '</div>';
 
@@ -581,13 +603,19 @@
     document.getElementById("copy").addEventListener("click", function () {
       var btn = this, hint = document.getElementById("copy-hint");
       copy(text, function (ok) {
-        btn.textContent = ok ? "Copied" : "Press ⌘C";
+        var label = document.getElementById("copy-label");
+        label.textContent = ok ? "Copied" : "Copy failed — select it instead";
+        btn.title = label.textContent;
         btn.classList.add("done");
         if (!ok) {
           selectAll(document.getElementById("blob-text"));
           hint.textContent = "Selected — copy it with your keyboard.";
         }
-        setTimeout(function () { btn.textContent = "Copy blob"; btn.classList.remove("done"); }, 2200);
+        setTimeout(function () {
+          label.textContent = "Copy blob";
+          btn.title = "Copy blob";
+          btn.classList.remove("done");
+        }, 2200);
       });
     });
   }
