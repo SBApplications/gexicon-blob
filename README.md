@@ -76,3 +76,12 @@ not stored here; they are a gigabyte a year and are archived elsewhere.
 
 The wire format, the maths and the full test suite live with the source, not
 here. This repo is the runner.
+
+## On-time runs
+
+GitHub queues scheduled workflows and fires them hours late. `ops/supabase_dispatch.sql`
+sets up a Supabase pg_cron job that calls this workflow's manual trigger on the same
+hourly schedule, on the minute. Run it once in the SQL editor of an active Supabase
+project and follow the credential note at the bottom of the file. The GitHub cron stays
+on as a fallback; the concurrency group and the commit-if-changed step keep the two
+from colliding.
