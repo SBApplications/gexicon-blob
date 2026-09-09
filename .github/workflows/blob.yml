@@ -1,14 +1,16 @@
 name: build blob
 
-# Five runs across the US session, in UTC because GitHub cron has no timezone.
+# Six runs: one premarket, five across the US session, in UTC because GitHub
+# cron has no timezone.
 # The minutes are deliberately off :00 and :30 — scheduled jobs bunch on the
 # hour and GitHub delays the queue, so an odd minute lands closer to on time.
 #
 # These are EDT (UTC-4). In EST they fire an hour earlier in New York terms;
-# the blob still refreshes five times a session, just shifted, and nothing
+# the blob still refreshes six times a day, just shifted, and nothing
 # downstream depends on the exact minute.
 on:
   schedule:
+    - cron: '7 11 * * 1-5'    # 07:07 ET, premarket: the night's open interest before the open
     - cron: '7 14 * * 1-5'    # 10:07 ET
     - cron: '37 15 * * 1-5'   # 11:37 ET
     - cron: '7 17 * * 1-5'    # 13:07 ET
