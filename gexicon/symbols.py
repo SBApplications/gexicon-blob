@@ -9,7 +9,8 @@ INDEX_TICKERS = frozenset({"SPX", "NDX", "RUT", "DJX"})
 # usable levels. Both price at roughly a hundredth of the index, so either would
 # translate onto a Dow futures chart the same way -- DIA is simply the one with
 # positions in it.
-DEFAULT_SYMBOLS = ("SPY", "SPX", "QQQ", "NDX", "IWM", "RUT", "DIA", "TSLA", "NVDA")
+DEFAULT_SYMBOLS = ("SPY", "SPX", "QQQ", "NDX", "IWM", "RUT", "DIA", "TSLA", "NVDA",
+                   "MU", "SNDK", "AMD", "GOOGL", "PLTR", "AAPL")
 
 
 def to_ticker(symbol):

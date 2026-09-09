@@ -44,8 +44,9 @@ jobs:
           # list means a symbol failed to fetch, and a short blob must fail the
           # run rather than quietly replace a complete one.
           n=$(awk -F'|' '{print NF-3}' blob.tmp)
-          echo "records: $n"
-          test "$n" -ge 9 || { echo "::error::only $n records, expected 9"; exit 1; }
+          want=$(python3 -c "from gexicon.symbols import DEFAULT_SYMBOLS as d; print(len(d))")
+          echo "records: $n of $want"
+          test "$n" -ge "$want" || { echo "::error::only $n records, expected $want"; exit 1; }
           grep -q 'WC[0-9]' blob.tmp || { echo "::error::no wall tokens"; exit 1; }
           echo "bytes: $(wc -c < blob.tmp)"
 
