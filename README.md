@@ -20,7 +20,7 @@ overnight and does not change during the session.
 One line carrying every symbol: the gamma flip, net gamma, the ten heaviest
 strikes, the call wall and the put wall, and the market-implied odds of price
 touching each wall before the close. Symbols are SPY, SPX, QQQ, NDX, DIA, RUT,
-IWM, TSLA and NVDA.
+IWM, TSLA, NVDA, MU, SNDK, AMD, GOOGL, PLTR and AAPL.
 
 Records carry expiry buckets — today's expiry apart from everything after it —
 because the two frequently disagree, and blended into one number that
