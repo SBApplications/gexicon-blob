@@ -19,6 +19,8 @@ from .symbols import to_cboe, to_ticker
 
 URL_TEMPLATE = "https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json"
 
+SOURCE_NAME = "cboe"
+
 USER_AGENT = "gexicon/2.0 (+personal GEX levels; stdlib urllib)"
 DEFAULT_TIMEOUT = 60
 # A quote older than this means the feed has stalled. Never emit it as today's data.
@@ -113,12 +115,20 @@ class Chain(object):
       * `spot_ts` -- when `spot` was actually true, about fifteen minutes earlier.
         This is what the blob header carries, because the indicator anchors its
         futures basis on it. See `spot_effective_time`.
+
+    `source` names the feed the chain came from. CBOE is the default and the
+    normal answer; `yahoo` means CBOE's file had stalled and the pipeline fell
+    back. See `yahoo.py` and `pipeline.wants_fallback`.
     """
 
     def __init__(self, ticker, quote_ts, spot, contracts, dropped_expired,
                  dropped_unparseable, raw_count, spot_ts=None,
-                 spot_ts_fallback=None):
+                 spot_ts_fallback=None, source=SOURCE_NAME):
         self.ticker = ticker
+        # Which feed this chain came from, 'cboe' or 'yahoo'. Defaulted rather
+        # than required so the archive reader and every existing caller keep
+        # working unchanged; only the fallback path passes anything else.
+        self.source = source
         self.quote_ts = quote_ts
         self.spot = spot
         self.contracts = contracts

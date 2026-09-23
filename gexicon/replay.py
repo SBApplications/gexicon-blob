@@ -31,7 +31,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List
 
 from .archive import DEFAULT_ARCHIVE_DIR
-from .cboe import ASSUMED_FEED_DELAY, Chain, Contract
+from .cboe import ASSUMED_FEED_DELAY, SOURCE_NAME as CBOE_SOURCE, Chain, Contract
 from .encode import encode_blob
 from .nytime import NY, now_utc
 from .pipeline import RunResult
@@ -353,7 +353,10 @@ def read_chain(path):
                   # are zero rather than invented, and the UI shows a dash.
                   dropped_expired=0, dropped_unparseable=0,
                   raw_count=len(contracts),
-                  spot_ts=spot_ts, spot_ts_fallback=spot_ts_fallback)
+                  spot_ts=spot_ts, spot_ts_fallback=spot_ts_fallback,
+                  # Snapshots written before the Yahoo fallback existed carry no
+                  # source column, and CBOE was the only feed there was.
+                  source=(first.get("source") or "").strip() or CBOE_SOURCE)
     return chain, session_date
 
 

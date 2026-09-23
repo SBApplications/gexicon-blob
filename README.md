@@ -50,6 +50,38 @@ positioning.
 for that outcome, not a forecast, and the downside is systematically overpriced
 because people pay up for protection. Not a win rate.
 
+## The second source
+
+CBOE's file has a failure mode that looks like nothing at all: it keeps serving,
+with a well-formed timestamp on it, and stops being updated. On 23 September 2026
+it froze at 03:56 UTC and every build that morning republished the previous
+session's numbers, with no same-day expiry in them, while reporting success.
+
+So a stalled file now falls back to Yahoo Finance's option chain, per symbol:
+
+> If CBOE's quote is more than **2.5 hours** old (or the file did not come back
+> at all) **and** the New York clock reads between **08:00 and 16:30 on a
+> weekday**, fetch that symbol from Yahoo and use it when its quote is both newer
+> than CBOE's and from today's session.
+
+Outside those hours nothing is fetched. CBOE's file is meant to sit still
+overnight — it is holding the last close, which is the right data for that time
+of day. If Yahoo fails too, the CBOE file is kept and the run says so under
+WARNING; the existing stale-drop rules then decide whether it survives.
+
+Two things about the second source worth knowing. Yahoo needs one request per
+expiry where CBOE publishes one file per symbol, so a fallback run takes minutes
+rather than seconds. And Yahoo publishes no gamma, so it is computed here from
+the contract's implied vol with the same Black-Scholes form, risk-free rate and
+time-to-expiry the gamma flip already uses — the levels come out of one formula
+whichever feed they came from.
+
+`--source cboe` never calls Yahoo, `--source yahoo` never calls CBOE, and
+`--source auto` (the default) is the rule above. `--cboe-max-age` moves the 2.5
+hours. A run that fell back names the symbol under WARNING and marks it
+`source yahoo` in the `--summary` listing; a line saying nothing about its source
+came from CBOE.
+
 ## Scheduling
 
 Ten runs a session, on the half hour, 08:30 to 17:30 New York, Monday to
@@ -65,7 +97,9 @@ usable came back at all.
 **A red run on a market holiday is expected.** CBOE keeps serving the previous
 session's file, the pipeline drops every symbol whose quote is older than twelve
 hours, and with every symbol stale there is nothing left to publish. Friday's
-line stays in place.
+line stays in place. The second source does not change this: a holiday is still
+a weekday inside the window, but Yahoo serves the same last close, and a quote
+from a previous session is refused whatever its age.
 
 ## The archive
 
@@ -75,8 +109,15 @@ not stored here; they are a gigabyte a year and are archived elsewhere.
 
 ## Format and tests
 
-The wire format, the maths and the full test suite live with the source, not
-here. This repo is the runner.
+The wire format and the maths live in the source under `gexicon/`. The test
+suite is `tests/`, standard library unittest, no plugins:
+
+    python3 -m pytest -q tests
+    python3 -m unittest discover -s tests
+
+A few tests want saved CBOE payloads in `samples/` and a snapshot archive in
+`archive/`; neither is kept in this repo, so those tests skip here and run in the
+working copy alongside the indicator.
 
 ## On-time runs
 

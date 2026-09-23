@@ -3,15 +3,34 @@
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import time as clock_time
 from typing import Dict, List, Optional, Tuple
 
+from . import yahoo
 from .archive import DEFAULT_ARCHIVE_DIR, write_snapshot
 from .cboe import (ASSUMED_FEED_DELAY, FetchError, MAX_QUOTE_AGE_HOURS,
                    fetch_raw, reduce_payload)
 from .encode import encode_blob
-from .nytime import now_utc, session_date_of
+from .nytime import NY, now_utc, session_date_of
 from .record import build_record
 from .symbols import DEFAULT_SYMBOLS, to_cboe, to_ticker
+
+# How old CBOE's file may be before the second source is worth the requests.
+# CBOE republishes about hourly, so two and a half hours is several missed
+# refreshes -- long enough not to fire on a slow hour, short enough that a
+# genuine stall is caught inside the same session it happens in.
+CBOE_MAX_AGE_HOURS = 2.5
+
+# The window the fallback is allowed to fire in, New York local, weekdays only.
+# It opens before the cash session so a pre-market build still gets live data,
+# and closes half an hour after the cash close. Outside it CBOE's file is
+# *supposed* to sit still -- it is holding the last close, which is the correct
+# data for that time of day -- and calling Yahoo would be several hundred
+# requests to replace good numbers with the same numbers.
+FALLBACK_OPEN_NY = clock_time(8, 0)
+FALLBACK_CLOSE_NY = clock_time(16, 30)
+
+SOURCE_CHOICES = ("cboe", "yahoo", "auto")
 
 
 @dataclass
@@ -21,7 +40,8 @@ class RunResult:
     chains: list = field(default_factory=list)
     failures: List[Tuple[str, str]] = field(default_factory=list)
     # Not failures: the run produced a blob, but something about it is worth
-    # saying out loud -- a spot timestamp that had to be inferred, mostly.
+    # saying out loud -- a spot timestamp that had to be inferred, or a symbol
+    # that had to come from the second source.
     warnings: List[Tuple[str, str]] = field(default_factory=list)
     archived: List[str] = field(default_factory=list)
     session_date: object = None
@@ -56,30 +76,162 @@ def save_raw(raw_dir, symbol, payload):
     return path
 
 
+def inside_fallback_hours(moment):
+    """True when `moment` lands in the weekday window the fallback may fire in."""
+    local = moment.astimezone(NY)
+    if local.weekday() >= 5:
+        return False
+    return FALLBACK_OPEN_NY <= local.time() <= FALLBACK_CLOSE_NY
+
+
+def wants_fallback(chain, error, now, max_age_hours=CBOE_MAX_AGE_HOURS):
+    """Should the second source be tried for this symbol? Returns a reason or None.
+
+    Two cases, and both are the same underlying fault -- CBOE's file has stopped
+    being updated:
+
+      * the file came back and its quote is older than `max_age_hours`;
+      * the file did not come back at all, or was rejected outright, which is
+        what a stall turns into once it passes `cboe.MAX_QUOTE_AGE_HOURS`.
+
+    Both are gated on the clock. Outside the weekday window the file is meant to
+    be still, and an overnight build reading last night's close is reading
+    exactly the right thing.
+    """
+    if not inside_fallback_hours(now):
+        return None
+    if chain is None:
+        return "CBOE gave nothing usable (%s)" % (error or "no chain")
+    age_hours = (now - chain.quote_ts).total_seconds() / 3600.0
+    if age_hours > max_age_hours:
+        return ("CBOE's file is %.1fh old (limit %.1fh) -- the feed has stalled"
+                % (age_hours, max_age_hours))
+    return None
+
+
+def prefer_fallback(second, chain, now):
+    """Is the second source's chain actually better than what CBOE gave? Reason or None.
+
+    Two conditions, and both have to hold:
+
+      * its quote is newer than CBOE's -- a second source that is further behind
+        the first is not a repair;
+      * its quote lands on today's New York session -- what the fallback exists
+        to recover is *today's* data, and a quote from a previous session is not
+        that however fresh it looks against a stalled file.
+
+    The second condition is what keeps a market holiday behaving as it always
+    has. A holiday is a weekday inside the window, CBOE serves the last session's
+    file, and Yahoo serves the same last close: the run drops every symbol as
+    stale and the previous line stays up, which is the right answer. Without this
+    check a holiday would republish the last session's levels with their touch
+    odds gone, over the top of a good line.
+    """
+    today = session_date_of(now)
+    quoted = session_date_of(second.quote_ts)
+    if quoted != today:
+        return None, ("its quote is from session %s, not today's %s"
+                      % (quoted, today))
+    if chain is not None and second.quote_ts <= chain.quote_ts:
+        return None, ("its quote (%s) is no newer than CBOE's"
+                      % second.quote_ts.strftime("%Y-%m-%d %H:%M:%SZ"))
+    return True, None
+
+
+def _fetch_cboe(symbol, offline_dir, raw_dir, max_age_hours, now, timeout):
+    """One symbol from CBOE. Returns (chain, error_string); never both."""
+    try:
+        if offline_dir:
+            payload = load_offline_payload(offline_dir, symbol)
+        else:
+            payload = fetch_raw(symbol, timeout=timeout)
+            if raw_dir:
+                save_raw(raw_dir, symbol, payload)
+        chain = reduce_payload(symbol, payload,
+                               max_age_hours=None if offline_dir else max_age_hours,
+                               now=now)
+    except FetchError as exc:
+        return None, str(exc)
+    except (OSError, ValueError) as exc:
+        return None, "%s: %s" % (to_ticker(symbol), exc)
+    return chain, None
+
+
 def run(symbols=DEFAULT_SYMBOLS, offline_dir=None, archive_dir=DEFAULT_ARCHIVE_DIR,
-        raw_dir=None, max_age_hours=MAX_QUOTE_AGE_HOURS, now=None, timeout=60):
-    """Run the whole pipeline. Failures are collected, never swallowed."""
+        raw_dir=None, max_age_hours=MAX_QUOTE_AGE_HOURS, now=None, timeout=60,
+        source="auto", cboe_max_age_hours=CBOE_MAX_AGE_HOURS):
+    """Run the whole pipeline. Failures are collected, never swallowed.
+
+    `source` picks the feed: 'cboe' never calls Yahoo, 'yahoo' never calls CBOE,
+    and 'auto' -- the default -- uses CBOE and falls back per symbol when its
+    file has stalled inside trading hours. See `wants_fallback`.
+
+    An offline run never reaches the network, so it never falls back either: the
+    saved payloads are the whole of the input by definition.
+    """
     result = RunResult()
     result.computed_at = now or now_utc()
+    if source not in SOURCE_CHOICES:
+        raise ValueError("unknown source %r (expected one of %s)"
+                         % (source, ", ".join(SOURCE_CHOICES)))
 
     chains = []
     for symbol in symbols:
         ticker = to_ticker(symbol)
-        try:
-            if offline_dir:
-                payload = load_offline_payload(offline_dir, symbol)
+
+        chain = None
+        error = None
+        if source != "yahoo":
+            chain, error = _fetch_cboe(symbol, offline_dir, raw_dir, max_age_hours,
+                                       result.computed_at, timeout)
+
+        if source == "yahoo":
+            reason = "--source yahoo"
+        elif source == "auto" and not offline_dir:
+            reason = wants_fallback(chain, error, result.computed_at,
+                                    max_age_hours=cboe_max_age_hours)
+        else:
+            # --source cboe, or an offline run: the second source is off the
+            # table however stale the file turns out to be.
+            reason = None
+
+        if reason:
+            try:
+                second = yahoo.load_chain(symbol, timeout=min(timeout,
+                                                              yahoo.DEFAULT_TIMEOUT),
+                                          now=result.computed_at)
+            except FetchError as exc:
+                if chain is None:
+                    result.failures.append((ticker, str(exc)))
+                    continue
+                # Keeping the stale CBOE file is the right call -- the existing
+                # age rules decide whether it survives -- but it is never silent.
+                result.warnings.append((
+                    ticker,
+                    "%s: %s, and the second source failed too (%s) -- kept CBOE"
+                    % (ticker, reason, exc)))
             else:
-                payload = fetch_raw(symbol, timeout=timeout)
-                if raw_dir:
-                    save_raw(raw_dir, symbol, payload)
-            chain = reduce_payload(symbol, payload,
-                                   max_age_hours=None if offline_dir else max_age_hours,
-                                   now=result.computed_at)
-        except FetchError as exc:
-            result.failures.append((ticker, str(exc)))
-            continue
-        except (OSError, ValueError) as exc:
-            result.failures.append((ticker, "%s: %s" % (ticker, exc)))
+                use_it, why_not = prefer_fallback(second, chain, result.computed_at)
+                if use_it:
+                    chain = second
+                    result.warnings.append((
+                        ticker,
+                        "%s: %s -- used Yahoo's chain instead (quote %s)"
+                        % (ticker, reason,
+                           second.quote_ts.strftime("%Y-%m-%d %H:%M:%SZ"))))
+                elif chain is None:
+                    result.failures.append((
+                        ticker,
+                        "%s: %s, and Yahoo is no use either -- %s"
+                        % (ticker, reason, why_not)))
+                    continue
+                else:
+                    result.warnings.append((
+                        ticker,
+                        "%s: %s, but %s -- kept CBOE" % (ticker, reason, why_not)))
+
+        if chain is None:
+            result.failures.append((ticker, error or "%s: no chain" % ticker))
             continue
         chains.append(chain)
 

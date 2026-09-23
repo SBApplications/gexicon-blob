@@ -38,7 +38,9 @@ jobs:
           # 1 only when nothing usable came back at all. stderr goes to
           # build.log rather than straight to the job log so the next step can
           # read it back and name the missing symbols in a workflow warning.
-          python3 -m gexicon > blob.tmp 2> build.log
+          # --summary so the job log names each symbol's spot, buckets and,
+          # when CBOE's file has stalled and the run fell back, its source.
+          python3 -m gexicon --summary > blob.tmp 2> build.log
           cat build.log >&2
           test -s blob.tmp
 

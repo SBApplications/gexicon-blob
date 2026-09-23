@@ -22,9 +22,12 @@ from .gex import contract_gex
 # infer its header stamp from the quote stamp, which puts the indicator's futures
 # basis anchor a couple of minutes out; with it the replay carries the exact
 # instant spot was true, the same value the live blob carried that day.
+# `source` was appended for the same reason and read back the same way: a
+# snapshot written before the Yahoo fallback existed has no such column, and it
+# is a CBOE chain by definition.
 HEADER = ("ticker", "quote_ts_utc", "session_date", "spot", "occ", "expiry",
           "right", "strike", "open_interest", "gamma", "iv", "volume", "gex",
-          "spot_ts_utc")
+          "spot_ts_utc", "source")
 
 DEFAULT_ARCHIVE_DIR = "archive"
 
@@ -69,6 +72,7 @@ def write_snapshot(archive_dir, chain, session_date):
                 "%.0f" % contract.volume,
                 "%.4f" % contract_gex(contract, chain.spot),
                 spot_ts,
+                chain.source,
             ))
     os.replace(tmp, path)
     return path, True

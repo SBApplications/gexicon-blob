@@ -15,6 +15,11 @@ never be mistakable for a live one.
 a replay reads the archive and nothing else, so a typo in a date is a complaint on
 stderr rather than a live download dressed up as history.
 
+CBOE is the source. When its file has stalled -- it keeps serving, with a
+well-formed stamp, and stops being updated -- a run inside trading hours fetches
+that symbol from Yahoo instead and says so under WARNING. `--source` overrides
+the choice; see `pipeline.wants_fallback` for the rule.
+
 Exit codes: 0 whenever at least one symbol made it into the blob -- others are
 dropped and named on stderr under WARNING, never silently -- 1 when nothing
 usable came back at all. A symbol that fails (stale quote, fetch error, bad
@@ -25,9 +30,9 @@ import argparse
 import sys
 
 from .archive import DEFAULT_ARCHIVE_DIR
-from .cboe import MAX_QUOTE_AGE_HOURS
+from .cboe import MAX_QUOTE_AGE_HOURS, SOURCE_NAME as CBOE_SOURCE
 from .nytime import NY
-from .pipeline import run
+from .pipeline import CBOE_MAX_AGE_HOURS, SOURCE_CHOICES, run
 from .replay import ReplayError, archive_index, find_snapshot, replay
 from .symbols import DEFAULT_SYMBOLS
 
@@ -48,6 +53,15 @@ def build_parser():
                         help="skip the snapshot archive (testing only)")
     parser.add_argument("--max-age-hours", type=float, default=MAX_QUOTE_AGE_HOURS,
                         help="reject a quote older than this (default: %(default)s)")
+    parser.add_argument("--source", choices=SOURCE_CHOICES, default="auto",
+                        help="which feed to read: cboe only, yahoo only, or auto "
+                             "-- CBOE with a Yahoo fallback when its file has "
+                             "stalled inside trading hours (default: %(default)s)")
+    parser.add_argument("--cboe-max-age", type=float, default=CBOE_MAX_AGE_HOURS,
+                        metavar="HOURS",
+                        help="with --source auto, how old CBOE's file may be "
+                             "before the second source is tried "
+                             "(default: %(default)s)")
     parser.add_argument("--timeout", type=float, default=60.0,
                         help="per-request timeout in seconds (default: %(default)s)")
     parser.add_argument("--summary", action="store_true",
@@ -80,11 +94,15 @@ def _summarise(result, stream):
     for record, chain in zip(result.records, result.chains):
         total = record.total
         tags = ",".join(s.tag for s in record.buckets) or "none"
+        # The source is named only when it is not the usual one. A line that says
+        # nothing about where the data came from means CBOE, every time.
+        source = "" if chain.source == CBOE_SOURCE else "  source %s" % chain.source
         print("%-5s spot=%-10.2f flip=%-10s net=%+.2fB contracts=%-6d "
-              "expired_dropped=%-5d buckets=%s"
+              "expired_dropped=%-5d buckets=%s%s"
               % (record.ticker, total.spot,
                  ("%.2f" % total.flip) if total.flip else "none",
-                 total.net, len(chain.contracts), chain.dropped_expired, tags),
+                 total.net, len(chain.contracts), chain.dropped_expired, tags,
+                 source),
               file=stream)
 
 
@@ -103,8 +121,10 @@ def _report(result, args):
     # is then inferred rather than read, and the futures basis rides on it.
     if result.warnings:
         print("", file=sys.stderr)
-        print("WARNING (%d): the header timestamp was inferred, not read"
-              % len(result.warnings), file=sys.stderr)
+        # Not one kind of warning any more: an inferred header stamp, or a
+        # symbol that had to come from the second source. Each line says which.
+        print("WARNING (%d): notes on the blob above" % len(result.warnings),
+              file=sys.stderr)
         for ticker, reason in result.warnings:
             print("  %-5s %s" % (ticker, reason), file=sys.stderr)
 
@@ -209,5 +229,7 @@ def main(argv=None):
         raw_dir=args.save_raw,
         max_age_hours=args.max_age_hours,
         timeout=args.timeout,
+        source=args.source,
+        cboe_max_age_hours=args.cboe_max_age,
     )
     return _report(result, args)
