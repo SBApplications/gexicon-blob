@@ -46,11 +46,13 @@ $$;
 
 revoke all on function ops.gexicon_dispatch() from public;
 
--- Hourly at :07, Monday to Friday, matching .github/workflows/blob.yml.
--- pg_cron runs in UTC. The workflow's commit-if-changed step means an hour
--- with no new data costs nothing.
+-- 08:30 to 17:30 New York, on the half hour, Monday to Friday, matching
+-- .github/workflows/blob.yml. pg_cron runs in UTC, so this is 12:30-21:30 UTC
+-- (07:30-16:30 New York in winter time -- one extra pre-market run, which is
+-- fine). The workflow's commit-if-changed step means an hour with no new data
+-- costs nothing.
 select cron.unschedule(jobname) from cron.job where jobname like 'gexicon-%';
-select cron.schedule('gexicon-hourly', '7 * * * 1-5', 'select ops.gexicon_dispatch()');
+select cron.schedule('gexicon-hourly', '30 12-21 * * 1-5', 'select ops.gexicon_dispatch()');
 
 -- CREDENTIAL. Create a fine-grained GitHub personal access token:
 --   github.com > Settings > Developer settings > Fine-grained tokens

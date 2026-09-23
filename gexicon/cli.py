@@ -15,8 +15,10 @@ never be mistakable for a live one.
 a replay reads the archive and nothing else, so a typo in a date is a complaint on
 stderr rather than a live download dressed up as history.
 
-Exit codes: 0 every symbol succeeded, 2 partial (blob printed, failures named on
-stderr), 1 nothing usable.
+Exit codes: 0 whenever at least one symbol made it into the blob -- others are
+dropped and named on stderr under WARNING, never silently -- 1 when nothing
+usable came back at all. A symbol that fails (stale quote, fetch error, bad
+payload, ...) must not take the rest of the run down with it.
 """
 
 import argparse
@@ -108,14 +110,19 @@ def _report(result, args):
 
     if result.failures:
         print("", file=sys.stderr)
-        print("FAILED (%d): these symbols are missing from the blob above"
+        # A dropped symbol is a warning, not a failed build: it does not stop
+        # the rest of the symbols from publishing, and it must never silently
+        # take the whole run down with it (the 2026-09-23 DIA incident, where
+        # one stale quote returned exit 2 and GitHub Actions' default `bash -e`
+        # aborted the step before anything was committed).
+        print("WARNING (%d): these symbols are missing from the blob above"
               % len(result.failures), file=sys.stderr)
         for ticker, reason in result.failures:
             print("  %-5s %s" % (ticker, reason), file=sys.stderr)
 
     if not result.blob:
         return 1
-    return 2 if result.failures else 0
+    return 0
 
 
 def _list_archive(archive_dir, stream=sys.stdout):

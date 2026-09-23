@@ -52,19 +52,20 @@ because people pay up for protection. Not a win rate.
 
 ## Scheduling
 
-Five runs a session, on odd minutes because scheduled jobs bunch on the hour and
-get queued. GitHub's cron has no timezone, so the times are UTC and shift by an
-hour relative to New York when the clocks change. Nothing downstream depends on
-the exact minute.
+Ten runs a session, on the half hour, 08:30 to 17:30 New York, Monday to
+Friday. GitHub's cron has no timezone, so the times are written in UTC and
+shift by an hour relative to New York when the clocks change — in winter time
+the same UTC window starts at 07:30 New York instead, one extra pre-market run.
 
-A run that produces a short blob — a symbol failed to fetch — fails instead of
-replacing a complete one, so `latest.blob` keeps the last complete set rather
-than being quietly half-replaced.
+A symbol whose quote is stale, or that otherwise fails to fetch, is dropped
+from that run and named on stderr under WARNING — it does not stop the rest of
+the symbols from publishing. `latest.blob` only goes unpublished when nothing
+usable came back at all.
 
 **A red run on a market holiday is expected.** CBOE keeps serving the previous
 session's file, the pipeline drops every symbol whose quote is older than twelve
-hours, and the blob comes back short and is refused. Nothing to publish on a day
-the market is shut, and Friday's line stays in place.
+hours, and with every symbol stale there is nothing left to publish. Friday's
+line stays in place.
 
 ## The archive
 

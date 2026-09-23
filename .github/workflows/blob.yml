@@ -1,12 +1,14 @@
 name: build blob
 
-# Hourly at :07, Monday to Friday, in UTC because GitHub cron has no timezone.
-# The odd minute lands closer to on time than :00, where scheduled jobs bunch.
+# 08:30 to 17:30 New York, on the half hour, Monday to Friday. GitHub cron has
+# no timezone, so this is written in UTC: 12:30-21:30 covers summer time
+# (EDT); in winter time (EST) the same UTC window is 07:30-16:30 New York,
+# one extra pre-market run, which is fine.
 # Open interest is a prior-night snapshot, so most hours only refresh spot and
 # the odds; the commit-if-changed step below makes an unchanged hour free.
 on:
   schedule:
-    - cron: '7 * * * 1-5'
+    - cron: '30 12-21 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +32,14 @@ jobs:
       - name: Build the blob
         run: |
           set -o pipefail
-          python3 -m gexicon > blob.tmp
+          # A symbol whose quote is stale, or that otherwise fails, is dropped
+          # from the blob and named on stderr under WARNING -- it does not fail
+          # this step. Exit code is 0 as long as at least one symbol made it in;
+          # 1 only when nothing usable came back at all. stderr goes to
+          # build.log rather than straight to the job log so the next step can
+          # read it back and name the missing symbols in a workflow warning.
+          python3 -m gexicon > blob.tmp 2> build.log
+          cat build.log >&2
           test -s blob.tmp
 
       - name: Check it before committing anything
@@ -41,12 +50,17 @@ jobs:
             *) echo "::error::not an NSGEX2 blob"; exit 1 ;;
           esac
           # Records start after the three header fields. Fewer than the symbol
-          # list means a symbol failed to fetch, and a short blob must fail the
-          # run rather than quietly replace a complete one.
+          # list means one or more symbols were dropped (stale quote, fetch
+          # error, etc.) -- a warning, not a build failure, as long as at least
+          # one symbol made it into the blob.
           n=$(awk -F'|' '{print NF-3}' blob.tmp)
           want=$(python3 -c "from gexicon.symbols import DEFAULT_SYMBOLS as d; print(len(d))")
           echo "records: $n of $want"
-          test "$n" -ge "$want" || { echo "::error::only $n records, expected $want"; exit 1; }
+          test "$n" -ge 1 || { echo "::error::no records at all -- every symbol failed"; exit 1; }
+          if [ "$n" -lt "$want" ]; then
+            missing=$(awk '/WARNING \([0-9]+\): these symbols are missing from the blob above/{f=1; next} /^$/{f=0} f{print $1}' build.log | paste -sd, -)
+            echo "::warning::only $n of $want records -- missing: ${missing:-see build.log above}"
+          fi
           grep -q 'WC[0-9]' blob.tmp || { echo "::error::no wall tokens"; exit 1; }
           echo "bytes: $(wc -c < blob.tmp)"
 

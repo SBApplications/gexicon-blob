@@ -353,7 +353,7 @@
     </div>
   </section>
 
-  <p class="caveat">Hourly at seven past, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
+  <p class="caveat">08:30 to 17:30 New York, on the half hour, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
 
   <div class="notes">
     <div class="note">
@@ -385,9 +385,11 @@
   // --- the schedule -------------------------------------------------------
   // Taken from .github/workflows/blob.yml. GitHub cron has no timezone, so
   // these are UTC and the New York clock time shifts with daylight saving —
-  // which is why nothing here is hardcoded in ET.
-  //   cron: '7 * * * 1-5'
-  var SLOTS = (function () { var a = []; for (var h = 0; h < 24; h++) a.push([h, 7]); return a; })(); // [UTC hour, minute]
+  // which is why nothing here is hardcoded in ET. 12:30-21:30 UTC is
+  // 08:30-17:30 New York in summer time, 07:30-16:30 in winter time (one
+  // extra pre-market run), matching the cron below.
+  //   cron: '30 12-21 * * 1-5'
+  var SLOTS = (function () { var a = []; for (var h = 12; h <= 21; h++) a.push([h, 30]); return a; })(); // [UTC hour, minute]
   var WEEKDAYS = [1, 2, 3, 4, 5]; // cron 1-5, Monday to Friday, in UTC
   var LATE_GRACE_MS = 25 * 60 * 1000; // how long a fired slot still reads as "due"
 
@@ -561,7 +563,12 @@
 
     var stats = [];
     if (info.stamp) {
-      stats.push("stamped " + fmtIn(info.stamp, "UTC") + " UTC");
+      // This is the OLDEST symbol's quote-effective time, never a build/run
+      // clock -- gexicon/pipeline.py deliberately does not put the run clock
+      // on the wire (see RunResult.computed_at there). There is only the one
+      // timestamp in the header, so there is no separate "built" time to show
+      // beside it.
+      stats.push("oldest quote " + fmtIn(info.stamp, "UTC") + " UTC");
       stats.push(ageText(Date.now() - info.stamp.getTime()));
     }
     stats.push(sizeText(text.length));
