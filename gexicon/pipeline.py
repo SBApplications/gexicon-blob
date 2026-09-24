@@ -27,7 +27,7 @@ CBOE_MAX_AGE_HOURS = 2.5
 # *supposed* to sit still -- it is holding the last close, which is the correct
 # data for that time of day -- and calling Yahoo would be several hundred
 # requests to replace good numbers with the same numbers.
-FALLBACK_OPEN_NY = clock_time(8, 0)
+FALLBACK_OPEN_NY = clock_time(7, 0)
 FALLBACK_CLOSE_NY = clock_time(16, 30)
 
 SOURCE_CHOICES = ("cboe", "yahoo", "auto")
