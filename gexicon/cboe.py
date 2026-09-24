@@ -123,7 +123,8 @@ class Chain(object):
 
     def __init__(self, ticker, quote_ts, spot, contracts, dropped_expired,
                  dropped_unparseable, raw_count, spot_ts=None,
-                 spot_ts_fallback=None, source=SOURCE_NAME):
+                 spot_ts_fallback=None, source=SOURCE_NAME, session_date=None,
+                 spot_note=None):
         self.ticker = ticker
         # Which feed this chain came from, 'cboe' or 'yahoo'. Defaulted rather
         # than required so the archive reader and every existing caller keep
@@ -141,9 +142,19 @@ class Chain(object):
         # None when last_trade_time was used as-is; otherwise the reason the
         # fallback fired, for the run log.
         self.spot_ts_fallback = spot_ts_fallback
+        # Normally the session is read off the quote stamp. The second source
+        # overrides it, because its stamp is not always this session's even when
+        # the chain plainly is -- pre-market it is yesterday's close for every
+        # symbol. See `yahoo.chain_session_date`.
+        self._session_date = session_date
+        # A line for the run log when the spot needed explaining: proxied from an
+        # ETF twin, or a prior close the index has not moved off yet.
+        self.spot_note = spot_note
 
     @property
     def session_date(self):
+        if self._session_date is not None:
+            return self._session_date
         return session_date_of(self.quote_ts)
 
 

@@ -13,6 +13,14 @@ DEFAULT_SYMBOLS = ("SPY", "SPX", "QQQ", "NDX", "IWM", "RUT", "DIA", "TSLA", "NVD
                    "MU", "SNDK", "AMD", "GOOGL", "PLTR", "AAPL")
 
 
+# The ETF that tracks each cash index, used when Yahoo's index quote has stopped
+# updating. Yahoo publishes no pre-market print for an index, and on 2026-09-24 it
+# held yesterday's close on ^SPX and ^RUT well past the open while every ETF quote
+# was live. The ETF is the same market in a tradeable wrapper, so it can stand in
+# for the index's spot. See `yahoo.proxy_spot`.
+INDEX_TWINS = {"SPX": "SPY", "NDX": "QQQ", "RUT": "IWM"}
+
+
 def to_ticker(symbol):
     """Normalise any spelling to the TradingView ticker: '_SPX' -> 'SPX'."""
     return symbol.strip().upper().lstrip("_")

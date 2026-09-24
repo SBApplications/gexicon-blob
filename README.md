@@ -61,20 +61,44 @@ So a stalled file now falls back to Yahoo Finance's option chain, per symbol:
 
 > If CBOE's quote is more than **2.5 hours** old (or the file did not come back
 > at all) **and** the New York clock reads between **08:00 and 16:30 on a
-> weekday**, fetch that symbol from Yahoo and use it when its quote is both newer
-> than CBOE's and from today's session.
+> weekday**, fetch that symbol from Yahoo and use it when it is today's chain and
+> no older than CBOE's.
 
 Outside those hours nothing is fetched. CBOE's file is meant to sit still
 overnight — it is holding the last close, which is the right data for that time
 of day. If Yahoo fails too, the CBOE file is kept and the run says so under
 WARNING; the existing stale-drop rules then decide whether it survives.
 
-Two things about the second source worth knowing. Yahoo needs one request per
-expiry where CBOE publishes one file per symbol, so a fallback run takes minutes
-rather than seconds. And Yahoo publishes no gamma, so it is computed here from
-the contract's implied vol with the same Black-Scholes form, risk-free rate and
-time-to-expiry the gamma flip already uses — the levels come out of one formula
-whichever feed they came from.
+**Which session a Yahoo chain belongs to is read off the chain, not off its
+timestamp.** Pre-market every Yahoo quote is still yesterday's 16:00 close, and
+the cash indexes hold that stamp past the open until they print, so the stamp
+says "yesterday" on a chain that is plainly today's — which is what emptied the
+08:30 build and dropped SPX and RUT at 09:30 on 24 September 2026. Open interest
+rolls overnight and settled expiries leave the file, so the rule is: inside the
+window, on a weekday, a chain whose earliest live expiry **is today** is today's
+chain.
+
+**Spot comes from the freshest print in the quote.** Pre- and post-market prints
+are preferred over the regular one when they are newer, which covers every ETF
+and single stock. Cash indexes have no such print, and Yahoo's index quotes stop
+updating for hours at a time, so an index whose own quote is over half an hour
+old takes its spot from its ETF twin — SPY for SPX, QQQ for NDX, IWM for RUT —
+carried across on the two previous closes:
+
+    SPX = SPY_live × (SPX_prev_close ÷ SPY_prev_close)
+
+Both closes are the same session's, so what is left over is one session of
+tracking drift. If the twin is stale too, the prior close is kept and the levels
+still build — the flip and the walls come from open interest and strikes, not
+from spot. Either way the run names the symbol under WARNING, and a spot that is
+still a prior close is not allowed to set the blob's header stamp.
+
+Two more things worth knowing. Yahoo needs one request per expiry where CBOE
+publishes one file per symbol, so a fallback run takes minutes rather than
+seconds. And Yahoo publishes no gamma, so it is computed here from the contract's
+implied vol with the same Black-Scholes form, risk-free rate and time-to-expiry
+the gamma flip already uses — the levels come out of one formula whichever feed
+they came from.
 
 `--source cboe` never calls Yahoo, `--source yahoo` never calls CBOE, and
 `--source auto` (the default) is the rule above. `--cboe-max-age` moves the 2.5
@@ -98,8 +122,9 @@ usable came back at all.
 session's file, the pipeline drops every symbol whose quote is older than twelve
 hours, and with every symbol stale there is nothing left to publish. Friday's
 line stays in place. The second source does not change this: a holiday is still
-a weekday inside the window, but Yahoo serves the same last close, and a quote
-from a previous session is refused whatever its age.
+a weekday inside the window, but nothing expires on a holiday, so no chain's
+earliest live expiry is today and every symbol is refused as a previous
+session's.
 
 ## The archive
 

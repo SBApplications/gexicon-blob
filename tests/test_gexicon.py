@@ -51,7 +51,7 @@ from gexicon.symbols import DEFAULT_SYMBOLS, to_cboe, to_ticker     # noqa: E402
 from gexicon import pipeline as pipeline_module                     # noqa: E402
 from gexicon import yahoo                                           # noqa: E402
 from gexicon.pipeline import (CBOE_MAX_AGE_HOURS, inside_fallback_hours,  # noqa: E402
-                              wants_fallback)
+                              prefer_fallback, wants_fallback)
 
 
 def utc(text):
@@ -1850,13 +1850,16 @@ def yahoo_sample():
 
 
 def yahoo_payload(expiry_epoch, calls=(), puts=(), spot=100.0,
-                  market_time=None, symbol="TEST"):
+                  market_time=None, symbol="TEST", quote_extra=None):
     """A Yahoo chain response with whatever contracts the test needs."""
+    quote = {"symbol": symbol, "regularMarketPrice": spot,
+             "regularMarketTime": market_time}
+    if quote_extra:
+        quote.update(quote_extra)
     return {"optionChain": {"error": None, "result": [{
         "underlyingSymbol": symbol,
         "expirationDates": [expiry_epoch],
-        "quote": {"symbol": symbol, "regularMarketPrice": spot,
-                  "regularMarketTime": market_time},
+        "quote": quote,
         "options": [{"expirationDate": expiry_epoch,
                      "calls": list(calls), "puts": list(puts)}],
     }]}}
@@ -2070,6 +2073,218 @@ class TestYahooGammaMatchesTheFlipMaths(unittest.TestCase):
         away = yahoo.bs_gamma(500.0, 560.0, 0.2, years)
         self.assertGreater(at, away)
         self.assertGreater(at, 0.0)
+
+
+class TestSessionDateComesFromTheChain(unittest.TestCase):
+    """2026-09-24: the quote stamp is not what session a Yahoo chain belongs to.
+
+    The 08:30 build failed with nothing usable and the 09:30:06 build dropped SPX
+    and RUT, both because the stamp read as yesterday. Pre-market it always does,
+    and the cash indexes hold it past the open until they print.
+    """
+
+    TODAY = date(2026, 9, 24)                                    # a Thursday
+    PRE = datetime(2026, 9, 24, 12, 30, tzinfo=timezone.utc)     # 08:30 New York
+    OPEN = datetime(2026, 9, 24, 13, 30, 6, tzinfo=timezone.utc)  # 09:30:06
+    LAST_CLOSE = datetime(2026, 9, 23, 20, 0, tzinfo=timezone.utc)  # 16:00 the 23rd
+
+    def chain(self, symbol, now, expiry=None, spot=6700.0, market_time=None,
+              quote_extra=None, twin_quote=None):
+        expiry = expiry or self.TODAY
+        occ = "TST%s" % expiry.strftime("%y%m%d")
+        stamp = market_time if market_time is not None else self.LAST_CLOSE
+        return yahoo.reduce_payloads(symbol, [yahoo_payload(
+            epoch_of(expiry),
+            calls=[yahoo_row(occ + "C06700000", 6700.0, oi=20000.0)],
+            puts=[yahoo_row(occ + "P06600000", 6600.0, oi=20000.0)],
+            spot=spot, market_time=int(stamp.timestamp()),
+            quote_extra=quote_extra)], now=now, twin_quote=twin_quote)
+
+    def test_a_premarket_chain_belongs_to_today_not_to_last_nights_stamp(self):
+        chain = self.chain("SPX", self.PRE)
+        self.assertEqual(session_date_of(chain.quote_ts), date(2026, 9, 23))
+        self.assertEqual(chain.session_date, self.TODAY)
+
+    def test_an_index_that_has_not_printed_yet_is_still_todays_chain(self):
+        # 09:30:06. Every ETF has ticked; the cash indexes have not.
+        chain = self.chain("SPX", self.OPEN)
+        self.assertEqual(chain.session_date, self.TODAY)
+        self.assertTrue(prefer_fallback(chain, None, self.OPEN)[0])
+
+    def test_a_premarket_chain_is_accepted_over_a_stalled_cboe_file(self):
+        self.assertTrue(prefer_fallback(self.chain("SPX", self.PRE), None,
+                                        self.PRE)[0])
+
+    def test_a_holiday_is_still_refused_because_nothing_expires_on_one(self):
+        # Monday 2026-01-19, a holiday. Yahoo holds Friday's close and the chain's
+        # earliest live expiry is Tuesday. `earliest >= today` would wave that
+        # through -- the test is equality for exactly this reason.
+        monday = datetime(2026, 1, 19, 14, 30, tzinfo=timezone.utc)   # 09:30 NY
+        friday_close = datetime(2026, 1, 16, 21, 0, tzinfo=timezone.utc)
+        chain = self.chain("SPX", monday, expiry=date(2026, 1, 20),
+                           market_time=friday_close)
+        self.assertEqual(chain.session_date, date(2026, 1, 16))
+        use_it, why_not = prefer_fallback(chain, None, monday)
+        self.assertIsNone(use_it)
+        self.assertIn("not today", why_not)
+
+    def test_a_chain_nobody_has_updated_for_a_week_is_refused(self):
+        stale = self.LAST_CLOSE - timedelta(days=7)
+        chain = self.chain("SPX", self.PRE, market_time=stale)
+        self.assertEqual(chain.session_date, session_date_of(stale))
+
+    def test_outside_the_window_the_quote_stamp_still_decides(self):
+        night = datetime(2026, 9, 24, 3, 0, tzinfo=timezone.utc)   # 23:00 the 23rd
+        chain = self.chain("SPX", night)
+        self.assertEqual(chain.session_date, date(2026, 9, 23))
+
+    def test_the_premarket_print_is_preferred_when_it_is_newer(self):
+        chain = self.chain(
+            "SPY", self.PRE, spot=660.0,
+            quote_extra={"preMarketPrice": 663.5,
+                         "preMarketTime": int(self.PRE.timestamp())})
+        self.assertAlmostEqual(chain.spot, 663.5)
+        self.assertEqual(chain.quote_ts, self.PRE)
+        self.assertEqual(chain.spot_ts, self.PRE)
+        self.assertEqual(chain.session_date, self.TODAY)
+        # An ETF that has printed needs no explaining.
+        self.assertIsNone(chain.spot_note)
+
+    def test_a_stale_premarket_print_is_ignored(self):
+        old = self.LAST_CLOSE - timedelta(hours=2)
+        chain = self.chain("SPY", self.PRE, spot=660.0,
+                           quote_extra={"preMarketPrice": 640.0,
+                                        "preMarketTime": int(old.timestamp())})
+        self.assertAlmostEqual(chain.spot, 660.0)
+        self.assertEqual(chain.quote_ts, self.LAST_CLOSE)
+
+    def test_todays_expiry_is_priced_off_the_run_clock_not_the_stale_stamp(self):
+        # Pricing today's expiry off last night's stamp hands it an extra day of
+        # life, and 0DTE gamma comes out about half what it should be.
+        chain = self.chain("SPX", self.OPEN)
+        years = years_to_expiry(self.TODAY, self.OPEN)
+        expected = yahoo.bs_gamma(6700.0, 6700.0, 0.20, years)
+        got = [c.gamma for c in chain.contracts if c.strike == 6700.0][0]
+        self.assertAlmostEqual(got, expected)
+        self.assertGreater(got, yahoo.bs_gamma(
+            6700.0, 6700.0, 0.20, years_to_expiry(self.TODAY, self.LAST_CLOSE)))
+
+
+class TestIndexSpotProxiedFromItsTwin(unittest.TestCase):
+    """Yahoo's ^SPX quote held 2026-09-23's close at 09:50 on the 24th."""
+
+    NOW = datetime(2026, 9, 24, 13, 50, tzinfo=timezone.utc)      # 09:50 New York
+    LAST_CLOSE = datetime(2026, 9, 23, 20, 36, tzinfo=timezone.utc)
+
+    def index_quote(self, spot=7706.03, previous_close=7706.03):
+        return {"symbol": "^SPX", "regularMarketPrice": spot,
+                "regularMarketTime": int(self.LAST_CLOSE.timestamp()),
+                "regularMarketPreviousClose": previous_close}
+
+    def twin_quote(self, price=772.4, previous_close=769.7, when=None):
+        when = when if when is not None else self.NOW
+        return {"symbol": "SPY", "regularMarketPrice": price,
+                "regularMarketTime": int(when.timestamp()),
+                "regularMarketPreviousClose": previous_close}
+
+    def test_the_arithmetic_is_the_twin_carried_on_the_closing_ratio(self):
+        spot, when = yahoo.proxy_spot(self.index_quote(), self.twin_quote(), "SPY")
+        self.assertAlmostEqual(spot, 772.4 * (7706.03 / 769.7), places=6)
+        self.assertAlmostEqual(spot, 7733.07, places=1)
+        self.assertEqual(when, self.NOW)
+
+    def test_the_twins_own_premarket_print_is_what_gets_carried(self):
+        pre = datetime(2026, 9, 24, 12, 30, tzinfo=timezone.utc)
+        twin = self.twin_quote(price=769.9)
+        twin["preMarketPrice"] = 774.0
+        twin["preMarketTime"] = int(pre.timestamp())
+        twin["regularMarketTime"] = int(self.LAST_CLOSE.timestamp())
+        spot, when = yahoo.proxy_spot(self.index_quote(), twin, "SPY")
+        self.assertAlmostEqual(spot, 774.0 * (7706.03 / 769.7), places=6)
+        self.assertEqual(when, pre)
+
+    def test_a_missing_previous_close_on_either_side_gives_no_proxy(self):
+        self.assertIsNone(yahoo.proxy_spot(
+            self.index_quote(previous_close=0.0), self.twin_quote(), "SPY"))
+        self.assertIsNone(yahoo.proxy_spot(
+            self.index_quote(), self.twin_quote(previous_close=0.0), "SPY"))
+
+    def chain(self, twin_quote=None, symbol="SPX"):
+        occ = "TST260924"
+        payload = yahoo_payload(
+            epoch_of(date(2026, 9, 24)),
+            calls=[yahoo_row(occ + "C07700000", 7700.0, oi=20000.0)],
+            puts=[yahoo_row(occ + "P07600000", 7600.0, oi=20000.0)],
+            spot=7706.03, market_time=int(self.LAST_CLOSE.timestamp()),
+            quote_extra={"regularMarketPreviousClose": 7706.03})
+        return yahoo.reduce_payloads(symbol, [payload], now=self.NOW,
+                                     twin_quote=twin_quote)
+
+    def test_the_chain_takes_the_proxied_spot_and_the_twins_instant(self):
+        chain = self.chain(twin_quote=self.twin_quote())
+        self.assertAlmostEqual(chain.spot, 772.4 * (7706.03 / 769.7), places=6)
+        self.assertEqual(chain.quote_ts, self.NOW)
+        self.assertEqual(chain.spot_ts, self.NOW)
+        self.assertEqual(chain.session_date, date(2026, 9, 24))
+        self.assertIn("proxied from SPY", chain.spot_note)
+        self.assertIn("17.2h old", chain.spot_note)
+
+    def test_a_twin_that_is_also_stale_leaves_the_prior_close_in_place(self):
+        chain = self.chain(twin_quote=self.twin_quote(when=self.LAST_CLOSE))
+        self.assertAlmostEqual(chain.spot, 7706.03)
+        self.assertEqual(chain.quote_ts, self.LAST_CLOSE)
+        self.assertIn("prior close", chain.spot_note)
+        # Still today's chain. The flip and the walls are built from open
+        # interest and strikes, and they do not need a live spot.
+        self.assertEqual(chain.session_date, date(2026, 9, 24))
+
+    def test_no_twin_at_all_leaves_the_prior_close_in_place(self):
+        self.assertIn("prior close", self.chain().spot_note)
+
+    def test_a_symbol_with_no_twin_is_never_proxied(self):
+        self.assertIsNone(self.chain(twin_quote=self.twin_quote(),
+                                     symbol="TEST").spot_note)
+
+
+class TestPriorCloseDoesNotMoveTheHeaderStamp(unittest.TestCase):
+    """One symbol stuck on yesterday's close must not date the whole blob."""
+
+    NOW = datetime(2026, 9, 24, 13, 50, tzinfo=timezone.utc)      # 09:50 New York
+    LAST_CLOSE = datetime(2026, 9, 23, 20, 0, tzinfo=timezone.utc)
+
+    def yahoo_chain(self, symbol, market_time):
+        occ = "TST260924"
+        return yahoo.reduce_payloads(symbol, [yahoo_payload(
+            epoch_of(date(2026, 9, 24)),
+            calls=[yahoo_row(occ + "C00100000", 100.0, oi=2000000.0)],
+            puts=[yahoo_row(occ + "P00099000", 99.0, oi=2000000.0)],
+            spot=100.0, market_time=int(market_time.timestamp()))],
+            now=self.NOW)
+
+    def test_the_stamp_is_the_oldest_spot_that_actually_printed_today(self):
+        stamps = {"SPY": self.NOW, "SPX": self.LAST_CLOSE}
+
+        def fake_fetch_raw(symbol, timeout=None):
+            raise FetchError("%s: feed looks stalled" % symbol)
+
+        def fake_load_chain(symbol, timeout=None, now=None, **kwargs):
+            return self.yahoo_chain(symbol, stamps[to_ticker(symbol)])
+
+        real_fetch = pipeline_module.fetch_raw
+        real_load = pipeline_module.yahoo.load_chain
+        pipeline_module.fetch_raw = fake_fetch_raw
+        pipeline_module.yahoo.load_chain = fake_load_chain
+        try:
+            result = run(symbols=["SPY", "SPX"], archive_dir=None, now=self.NOW)
+        finally:
+            pipeline_module.fetch_raw = real_fetch
+            pipeline_module.yahoo.load_chain = real_load
+
+        self.assertEqual(result.session_date, date(2026, 9, 24))
+        self.assertEqual(sorted(c.ticker for c in result.chains), ["SPX", "SPY"])
+        self.assertEqual(result.effective_at, self.NOW)
+        self.assertTrue(any("prior close" in note for t, note in result.warnings
+                            if t == "SPX"))
 
 
 class TestFallbackHours(unittest.TestCase):

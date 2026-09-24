@@ -114,25 +114,32 @@ def prefer_fallback(second, chain, now):
 
     Two conditions, and both have to hold:
 
-      * its quote is newer than CBOE's -- a second source that is further behind
-        the first is not a repair;
-      * its quote lands on today's New York session -- what the fallback exists
-        to recover is *today's* data, and a quote from a previous session is not
-        that however fresh it looks against a stalled file.
+      * the chain is today's New York session -- what the fallback exists to
+        recover is *today's* data, and a previous session's chain is not that
+        however fresh it looks against a stalled file;
+      * it is newer than CBOE's -- a second source further behind the first is
+        not a repair. Only asked when both are on the same session, because a
+        chain from today beats one from yesterday whatever the two stamps read.
 
-    The second condition is what keeps a market holiday behaving as it always
+    Which session a Yahoo chain belongs to is decided by
+    `yahoo.chain_session_date`, not by its quote stamp. Reading the stamp is what
+    dropped SPX and RUT on 2026-09-24: pre-market, and in the opening minute
+    before the cash indexes print, that stamp is still yesterday's close on a
+    chain that is plainly today's.
+
+    The session condition is what keeps a market holiday behaving as it always
     has. A holiday is a weekday inside the window, CBOE serves the last session's
-    file, and Yahoo serves the same last close: the run drops every symbol as
-    stale and the previous line stays up, which is the right answer. Without this
-    check a holiday would republish the last session's levels with their touch
-    odds gone, over the top of a good line.
+    file, and Yahoo serves the same last close on a chain with nothing expiring
+    today: the run drops every symbol as stale and the previous line stays up,
+    which is the right answer. Without this check a holiday would republish the
+    last session's levels with their touch odds gone, over the top of a good line.
     """
     today = session_date_of(now)
-    quoted = session_date_of(second.quote_ts)
-    if quoted != today:
-        return None, ("its quote is from session %s, not today's %s"
-                      % (quoted, today))
-    if chain is not None and second.quote_ts <= chain.quote_ts:
+    if second.session_date != today:
+        return None, ("its chain is from session %s, not today's %s"
+                      % (second.session_date, today))
+    if (chain is not None and chain.session_date == second.session_date
+            and second.quote_ts <= chain.quote_ts):
         return None, ("its quote (%s) is no newer than CBOE's"
                       % second.quote_ts.strftime("%Y-%m-%d %H:%M:%SZ"))
     return True, None
@@ -238,18 +245,17 @@ def run(symbols=DEFAULT_SYMBOLS, offline_dir=None, archive_dir=DEFAULT_ARCHIVE_D
     if not chains:
         return result
 
-    # One session date for the whole blob: the New York date of the newest quote.
-    # A symbol whose quote lands on a different session day is a stale file, not a
+    # One session date for the whole blob: the newest session any chain belongs
+    # to. A symbol from a different session day is a stale file, not a
     # contribution -- it is reported, not blended in.
-    result.session_date = max(session_date_of(c.quote_ts) for c in chains)
+    result.session_date = max(c.session_date for c in chains)
     usable = []
     for chain in chains:
-        if session_date_of(chain.quote_ts) != result.session_date:
+        if chain.session_date != result.session_date:
             result.failures.append((
                 chain.ticker,
-                "%s: quote is from session %s, blob session is %s -- stale file"
-                % (chain.ticker, session_date_of(chain.quote_ts),
-                   result.session_date)))
+                "%s: chain is from session %s, blob session is %s -- stale file"
+                % (chain.ticker, chain.session_date, result.session_date)))
             continue
         usable.append(chain)
 
@@ -275,8 +281,19 @@ def run(symbols=DEFAULT_SYMBOLS, offline_dir=None, archive_dir=DEFAULT_ARCHIVE_D
     # a mean, would overstate freshness for at least one symbol -- and the whole
     # point of this field is that it is not allowed to do that. The spread across
     # symbols is about a minute; the error this replaced was fifteen.
-    result.effective_at = min(c.spot_ts for c in usable)
+    # A spot that is still a prior close -- an index Yahoo has not updated and
+    # whose twin could not stand in -- does not get to drag the header stamp back
+    # a session. That would move every futures basis anchor onto yesterday's
+    # close and stretch every touch horizon by a day, for every symbol, to
+    # describe one. The symbol keeps its own stale spot and is named under
+    # WARNING instead.
+    printed_today = [c for c in usable
+                     if session_date_of(c.spot_ts) == result.session_date]
+    result.effective_at = min(c.spot_ts for c in (printed_today or usable))
     for chain in usable:
+        if chain.spot_note:
+            result.warnings.append(
+                (chain.ticker, "%s: %s" % (chain.ticker, chain.spot_note)))
         if chain.spot_ts_fallback:
             result.warnings.append((
                 chain.ticker,
