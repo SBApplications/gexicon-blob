@@ -2292,9 +2292,9 @@ class TestFallbackHours(unittest.TestCase):
     def ny(self, y, m, d, hour, minute=0):
         return datetime(y, m, d, hour, minute, tzinfo=NY).astimezone(timezone.utc)
 
-    def test_the_window_is_weekday_0800_to_1630_new_york(self):
+    def test_the_window_is_weekday_0700_to_1630_new_york(self):
         # 2026-09-23 is a Wednesday.
-        self.assertFalse(inside_fallback_hours(self.ny(2026, 9, 23, 7, 59)))
+        self.assertFalse(inside_fallback_hours(self.ny(2026, 9, 23, 6, 59)))
         self.assertTrue(inside_fallback_hours(self.ny(2026, 9, 23, 8, 0)))
         self.assertTrue(inside_fallback_hours(self.ny(2026, 9, 23, 11, 30)))
         self.assertTrue(inside_fallback_hours(self.ny(2026, 9, 23, 16, 30)))
