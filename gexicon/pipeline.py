@@ -166,7 +166,8 @@ def _fetch_cboe(symbol, offline_dir, raw_dir, max_age_hours, now, timeout):
 
 def run(symbols=DEFAULT_SYMBOLS, offline_dir=None, archive_dir=DEFAULT_ARCHIVE_DIR,
         raw_dir=None, max_age_hours=MAX_QUOTE_AGE_HOURS, now=None, timeout=60,
-        source="auto", cboe_max_age_hours=CBOE_MAX_AGE_HOURS):
+        source="auto", cboe_max_age_hours=CBOE_MAX_AGE_HOURS,
+        yahoo_workers=None):
     """Run the whole pipeline. Failures are collected, never swallowed.
 
     `source` picks the feed: 'cboe' never calls Yahoo, 'yahoo' never calls CBOE,
@@ -175,6 +176,10 @@ def run(symbols=DEFAULT_SYMBOLS, offline_dir=None, archive_dir=DEFAULT_ARCHIVE_D
 
     An offline run never reaches the network, so it never falls back either: the
     saved payloads are the whole of the input by definition.
+
+    `yahoo_workers` is how many of a symbol's expiries the second source fetches
+    at once; None takes `yahoo.YAHOO_WORKERS`. It changes the wall clock and
+    nothing else -- see `yahoo.fetch_payloads`.
     """
     result = RunResult()
     result.computed_at = now or now_utc()
@@ -206,7 +211,8 @@ def run(symbols=DEFAULT_SYMBOLS, offline_dir=None, archive_dir=DEFAULT_ARCHIVE_D
             try:
                 second = yahoo.load_chain(symbol, timeout=min(timeout,
                                                               yahoo.DEFAULT_TIMEOUT),
-                                          now=result.computed_at)
+                                          now=result.computed_at,
+                                          workers=yahoo_workers)
             except FetchError as exc:
                 if chain is None:
                     result.failures.append((ticker, str(exc)))

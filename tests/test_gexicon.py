@@ -13,6 +13,8 @@ import math
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
@@ -2038,6 +2040,128 @@ class TestYahooMapperDrops(unittest.TestCase):
         bad["optionChain"]["error"] = {"code": "Not Found"}
         with self.assertRaises(FetchError):
             yahoo.reduce_payloads("TEST", [bad])
+
+
+class _FakeYahooSession(object):
+    """Stands in for the cookie/crumb session. No network, no jar."""
+
+    def __init__(self, first):
+        self.first = first
+        self.starts = 0
+
+    def chain(self, symbol, date_epoch=None):
+        return self.first
+
+    def start(self):
+        self.starts += 1
+        return "test-crumb"
+
+    def worker_headers(self):
+        return {"User-Agent": "test", "Cookie": "A=1"}
+
+
+class TestYahooExpiriesInParallel(unittest.TestCase):
+    """Four at a time has to publish the same bytes as one at a time.
+
+    `reduce_payloads` walks the payload list in order and never sorts it, so the
+    order `fetch_payloads` hands back IS the order the contracts land in the
+    blob. If the pool ever let completion order through, the same chain would
+    encode differently from one run to the next.
+    """
+
+    NOW = datetime(2026, 9, 24, 14, 0, tzinfo=timezone.utc)
+    DAYS = (date(2026, 9, 25), date(2026, 9, 28), date(2026, 9, 30),
+            date(2026, 10, 2), date(2026, 10, 16), date(2026, 11, 20))
+    # One expiry that always fails, to prove the symbol keeps the rest.
+    BAD = date(2026, 9, 30)
+
+    def payload_for(self, day):
+        index = self.DAYS.index(day)
+        occ = "TST" + day.strftime("%y%m%d")
+        return yahoo_payload(
+            epoch_of(day),
+            calls=[yahoo_row(occ + "C00100000", 100.0 + index,
+                             oi=1000.0 + index, iv=0.18 + index / 100.0)],
+            puts=[yahoo_row(occ + "P00099000", 99.0 + index,
+                            oi=2000.0 + index, iv=0.22 + index / 100.0)],
+            market_time=int(self.NOW.timestamp()))
+
+    def first_payload(self):
+        payload = self.payload_for(self.DAYS[0])
+        payload["optionChain"]["result"][0]["expirationDates"] = [
+            epoch_of(day) for day in self.DAYS]
+        return payload
+
+    def collect(self, workers):
+        """`fetch_payloads` with the network replaced, and who finished when."""
+        by_epoch = {epoch_of(day): day for day in self.DAYS}
+        finished = []
+        lock = threading.Lock()
+
+        def fake_fetch_expiry(symbol, crumb, headers, date_epoch, timeout=None):
+            # The workers must be running off the snapshotted strings, not off
+            # the session object.
+            self.assertEqual(crumb, "test-crumb")
+            self.assertEqual(headers["Cookie"], "A=1")
+            day = by_epoch[date_epoch]
+            if day == self.BAD:
+                raise FetchError("TEST: expiry %s is out" % day)
+            # Later expiries answer first, so completion order is the reverse of
+            # submission order and a list built from it would come out shuffled.
+            time.sleep(0.01 * (len(self.DAYS) - self.DAYS.index(day)))
+            with lock:
+                finished.append(day)
+            return self.payload_for(day)
+
+        fake = _FakeYahooSession(self.first_payload())
+        real_session, real_fetch = yahoo.session, yahoo.fetch_expiry
+        real_stagger = yahoo.SUBMIT_STAGGER
+        yahoo.session = lambda timeout=None: fake
+        yahoo.fetch_expiry = fake_fetch_expiry
+        # The stagger is a pacing knob and nothing else, and at 0.05s it is
+        # longer than the fake latencies below -- leaving it on would hand the
+        # pool the expiries slowly enough that they came back in order anyway,
+        # which is the one thing this test must not assume.
+        yahoo.SUBMIT_STAGGER = 0
+        try:
+            payloads = yahoo.fetch_payloads("TEST", now=self.NOW, pause=0,
+                                            workers=workers)
+        finally:
+            yahoo.session, yahoo.fetch_expiry = real_session, real_fetch
+            yahoo.SUBMIT_STAGGER = real_stagger
+        return payloads, finished
+
+    def contracts_of(self, payloads):
+        chain = yahoo.reduce_payloads("TEST", payloads, now=self.NOW)
+        return [(c.occ, c.expiry, c.right, c.strike, c.open_interest, c.gamma,
+                 c.iv, c.volume) for c in chain.contracts]
+
+    def test_four_at_a_time_gives_the_same_contracts_as_one_at_a_time(self):
+        sequential, _seq_order = self.collect(workers=1)
+        parallel, par_order = self.collect(workers=4)
+
+        # The pool really did finish out of order -- otherwise this test would
+        # pass on a list that was never shuffled in the first place.
+        self.assertNotEqual(par_order, sorted(par_order))
+
+        self.assertEqual(self.contracts_of(sequential),
+                         self.contracts_of(parallel))
+        self.assertEqual(json.dumps(sequential), json.dumps(parallel))
+
+    def test_the_payload_list_is_in_expiry_order_whatever_finished_first(self):
+        payloads, _order = self.collect(workers=4)
+        got = []
+        for payload in payloads:
+            for group in payload["optionChain"]["result"][0]["options"]:
+                got.append(yahoo.expiry_from_epoch(group["expirationDate"]))
+        self.assertEqual(got, [d for d in self.DAYS if d != self.BAD])
+
+    def test_one_dead_expiry_costs_that_expiry_and_not_the_symbol(self):
+        for workers in (1, 4):
+            payloads, _order = self.collect(workers=workers)
+            expiries = {c[1] for c in self.contracts_of(payloads)}
+            self.assertNotIn(self.BAD, expiries)
+            self.assertEqual(expiries, {d for d in self.DAYS if d != self.BAD})
 
 
 class TestYahooGammaMatchesTheFlipMaths(unittest.TestCase):

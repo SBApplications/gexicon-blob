@@ -21,6 +21,10 @@ Three requests to get started, then one per expiry:
      epochs, and the FIRST expiry's contracts. Every further expiry needs its own
      request with &date={epoch}.
 
+The per-expiry requests for one symbol go out a few at a time -- see
+`fetch_payloads`. The handshake above happens once, on one thread, before any of
+them start.
+
 Index symbols carry a caret (^SPX) and have to be URL-encoded; ETFs and single
 stocks are passed through bare.
 
@@ -37,6 +41,7 @@ carrying in your head while reading this file:
     onto the index's scale rather than publishing a day-old spot.
 """
 
+import concurrent.futures
 import http.cookiejar
 import json
 import math
@@ -69,6 +74,17 @@ REQUEST_PAUSE = 0.15
 # or a 401 will not get better by being repeated.
 RETRY_STATUSES = (429, 500, 502, 503, 504)
 RETRY_PAUSE = 1.0
+
+# How many of one symbol's expiries are in flight at once. Fifteen symbols at one
+# request per expiry is about 450 requests, and one at a time took roughly three
+# minutes of wall clock. Four at a time is the same requests, the same pauses per
+# request, and a quarter of the waiting.
+YAHOO_WORKERS = 4
+
+# The gap left between handing one expiry to the pool and handing over the next,
+# so the first four do not leave in the same instant. This is not the throttle --
+# RETRY_PAUSE and the retry rule above still do that work -- just a stagger.
+SUBMIT_STAGGER = 0.05
 
 SOURCE_NAME = "yahoo"
 
@@ -140,6 +156,68 @@ def _moment(epoch):
     return datetime.fromtimestamp(int(epoch), timezone.utc)
 
 
+def chain_url(symbol, crumb, date_epoch=None):
+    """The chain endpoint URL for one symbol, optionally for one expiry."""
+    url = CHAIN_URL.format(symbol=urllib.parse.quote(to_yahoo(symbol)))
+    query = {"crumb": crumb}
+    if date_epoch is not None:
+        query["date"] = str(int(date_epoch))
+    return url + "?" + urllib.parse.urlencode(query)
+
+
+def _open_static(url, headers, timeout=DEFAULT_TIMEOUT):
+    """One request built from plain header strings, on its own opener.
+
+    This is the call the worker threads make. It deliberately does NOT go through
+    `_Session`: an `http.cookiejar.CookieJar` is written to on every response, and
+    the opener that wraps it is shared state that several threads would be
+    mutating at once. The cookie is a fixed string by the time this runs -- see
+    `_Session.cookie_header` -- so a worker only ever reads it.
+
+    `ssl_context()` is cached after its first call, and that call happens during
+    the handshake, before any thread starts. The opener itself is built per
+    request, which costs nothing next to a network round trip.
+    """
+    request = urllib.request.Request(url, headers=dict(headers))
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=ssl_context()))
+    for attempt in (0, 1):
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code in RETRY_STATUSES and attempt == 0:
+                # A second ago is soon enough on a 429, and this sleep is the
+                # worker's own -- the other threads carry on.
+                time.sleep(RETRY_PAUSE)
+                continue
+            raise FetchError("yahoo: HTTP %s from %s" % (exc.code, url))
+        except urllib.error.URLError as exc:
+            if attempt == 0:
+                time.sleep(RETRY_PAUSE)
+                continue
+            raise FetchError("yahoo: network error on %s: %s" % (url, exc.reason))
+        except OSError as exc:
+            raise FetchError("yahoo: transport error on %s: %s" % (url, exc))
+    raise FetchError("yahoo: gave up on %s" % url)
+
+
+def _decode_chain(body, ticker):
+    if not body:
+        raise FetchError("yahoo: empty response for %s" % ticker)
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise FetchError("yahoo: payload is not JSON for %s: %s" % (ticker, exc))
+
+
+def fetch_expiry(symbol, crumb, headers, date_epoch, timeout=DEFAULT_TIMEOUT):
+    """One expiry's chain response. Safe to call from a worker thread."""
+    body = _open_static(chain_url(symbol, crumb, date_epoch=date_epoch),
+                        headers, timeout=timeout)
+    return _decode_chain(body, to_ticker(symbol))
+
+
 class _Session(object):
     """A cookie jar plus the crumb that goes with it. Fetched once, reused."""
 
@@ -189,19 +267,28 @@ class _Session(object):
     def chain(self, symbol, date_epoch=None):
         """One chain response: the whole payload, decoded."""
         crumb = self.start()
-        url = CHAIN_URL.format(symbol=urllib.parse.quote(to_yahoo(symbol)))
-        query = {"crumb": crumb}
-        if date_epoch is not None:
-            query["date"] = str(int(date_epoch))
-        url = url + "?" + urllib.parse.urlencode(query)
-        body = self._open(url)
-        if not body:
-            raise FetchError("yahoo: empty response for %s" % to_ticker(symbol))
-        try:
-            return json.loads(body.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise FetchError("yahoo: payload is not JSON for %s: %s"
-                             % (to_ticker(symbol), exc))
+        body = self._open(chain_url(symbol, crumb, date_epoch=date_epoch))
+        return _decode_chain(body, to_ticker(symbol))
+
+    def cookie_header(self):
+        """What the jar would put in a Cookie header, as a fixed string.
+
+        Taken once, after the handshake, and handed to the workers so none of
+        them has to reach into the jar. The jar keeps being written to by the
+        main thread's own requests; this string does not change under anyone.
+        """
+        probe = urllib.request.Request(chain_url("SPY", "probe"),
+                                       headers={"User-Agent": USER_AGENT})
+        self.jar.add_cookie_header(probe)
+        return probe.get_header("Cookie") or ""
+
+    def worker_headers(self):
+        """The headers a worker thread sends: user agent plus the cookie."""
+        headers = {"User-Agent": USER_AGENT}
+        cookie = self.cookie_header()
+        if cookie:
+            headers["Cookie"] = cookie
+        return headers
 
 
 _session_cache = []
@@ -533,13 +620,28 @@ def reduce_payloads(symbol, payloads, now=None, twin_quote=None):
 
 
 def fetch_payloads(symbol, timeout=DEFAULT_TIMEOUT, now=None, pause=REQUEST_PAUSE,
-                   max_expiries=None):
+                   max_expiries=None, workers=None):
     """Every expiry for one symbol, as a list of responses.
 
     The first response carries the expiry list and the front expiry's contracts;
     each remaining expiry costs one more request. Expiries that have already
     settled are skipped rather than fetched -- they would be dropped on the way
     in anyway.
+
+    Those remaining requests go out `workers` at a time. Only the expiries of one
+    symbol overlap; symbols still run one after another, because the fallback is
+    decided per symbol and a whole board in flight at once is a scrape.
+
+    The returned list is always the first response followed by the rest in
+    ascending expiry order, whichever thread happened to finish first.
+    `reduce_payloads` walks this list in order and never sorts, so the order of
+    this list IS the order of the contracts in the blob -- a parallel run and a
+    sequential one have to hand back the same list or they publish different
+    bytes off the same data.
+
+    An expiry that fails is dropped on its own; the symbol keeps every other
+    expiry it did get. Only the first response cannot be missed, and by this
+    point it has already succeeded.
     """
     ticker = to_ticker(symbol)
     reference = now if now is not None else now_utc()
@@ -569,16 +671,42 @@ def fetch_payloads(symbol, timeout=DEFAULT_TIMEOUT, now=None, pause=REQUEST_PAUS
     if max_expiries is not None:
         epochs = epochs[:max_expiries]
 
+    if not epochs:
+        return payloads
+
+    count = YAHOO_WORKERS if workers is None else max(1, int(workers))
+    crumb = connection.start()
+    headers = connection.worker_headers()
+
+    if count == 1:
+        for epoch in epochs:
+            if pause:
+                time.sleep(pause)
+            try:
+                payloads.append(fetch_expiry(symbol, crumb, headers, epoch,
+                                             timeout=timeout))
+            except FetchError:
+                continue
+        return payloads
+
+    done = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
+        pending = {}
+        for epoch in epochs:
+            pending[pool.submit(fetch_expiry, symbol, crumb, headers, epoch,
+                                timeout=timeout)] = epoch
+            if SUBMIT_STAGGER:
+                time.sleep(SUBMIT_STAGGER)
+        for future, epoch in pending.items():
+            try:
+                done[epoch] = future.result()
+            except FetchError:
+                continue
+
+    # Expiry order, not the order the threads came back in. See the docstring.
     for epoch in epochs:
-        if pause:
-            time.sleep(pause)
-        try:
-            payloads.append(connection.chain(symbol, date_epoch=epoch))
-        except FetchError:
-            # One expiry out of fifty is not worth losing the symbol over. The
-            # first response is the one that cannot be missed, and it already
-            # succeeded.
-            continue
+        if epoch in done:
+            payloads.append(done[epoch])
     return payloads
 
 
@@ -615,11 +743,12 @@ def twin_quote_for(symbol, payloads, now, timeout=DEFAULT_TIMEOUT):
 
 
 def load_chain(symbol, payloads=None, timeout=DEFAULT_TIMEOUT, now=None,
-               pause=REQUEST_PAUSE, max_expiries=None, twin_quote=None):
+               pause=REQUEST_PAUSE, max_expiries=None, twin_quote=None,
+               workers=None):
     """Fetch (or accept saved responses) and reduce them to a Chain."""
     if payloads is None:
         payloads = fetch_payloads(symbol, timeout=timeout, now=now, pause=pause,
-                                  max_expiries=max_expiries)
+                                  max_expiries=max_expiries, workers=workers)
     if twin_quote is None:
         twin_quote = twin_quote_for(symbol, payloads, now, timeout=timeout)
     return reduce_payloads(symbol, payloads, now=now, twin_quote=twin_quote)

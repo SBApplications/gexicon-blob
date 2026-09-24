@@ -95,10 +95,11 @@ still a prior close is not allowed to set the blob's header stamp.
 
 Two more things worth knowing. Yahoo needs one request per expiry where CBOE
 publishes one file per symbol, so a fallback run takes minutes rather than
-seconds. And Yahoo publishes no gamma, so it is computed here from the contract's
-implied vol with the same Black-Scholes form, risk-free rate and time-to-expiry
-the gamma flip already uses — the levels come out of one formula whichever feed
-they came from.
+seconds; those per-expiry requests now go out a few at a time within each symbol
+(`--yahoo-workers`, default 4, and 1 is one at a time). And Yahoo publishes no
+gamma, so it is computed here from the contract's implied vol with the same
+Black-Scholes form, risk-free rate and time-to-expiry the gamma flip already
+uses — the levels come out of one formula whichever feed they came from.
 
 `--source cboe` never calls Yahoo, `--source yahoo` never calls CBOE, and
 `--source auto` (the default) is the rule above. `--cboe-max-age` moves the 2.5

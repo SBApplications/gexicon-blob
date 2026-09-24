@@ -33,6 +33,7 @@ from .archive import DEFAULT_ARCHIVE_DIR
 from .cboe import MAX_QUOTE_AGE_HOURS, SOURCE_NAME as CBOE_SOURCE
 from .nytime import NY
 from .pipeline import CBOE_MAX_AGE_HOURS, SOURCE_CHOICES, run
+from .yahoo import YAHOO_WORKERS
 from .replay import ReplayError, archive_index, find_snapshot, replay
 from .symbols import DEFAULT_SYMBOLS
 
@@ -61,6 +62,11 @@ def build_parser():
                         metavar="HOURS",
                         help="with --source auto, how old CBOE's file may be "
                              "before the second source is tried "
+                             "(default: %(default)s)")
+    parser.add_argument("--yahoo-workers", type=int, default=YAHOO_WORKERS,
+                        metavar="N",
+                        help="how many of a symbol's expiries the second source "
+                             "fetches at once; 1 is one at a time "
                              "(default: %(default)s)")
     parser.add_argument("--timeout", type=float, default=60.0,
                         help="per-request timeout in seconds (default: %(default)s)")
@@ -231,5 +237,6 @@ def main(argv=None):
         timeout=args.timeout,
         source=args.source,
         cboe_max_age_hours=args.cboe_max_age,
+        yahoo_workers=args.yahoo_workers,
     )
     return _report(result, args)
