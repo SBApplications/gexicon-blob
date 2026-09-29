@@ -1,14 +1,15 @@
 name: build blob
 
-# 08:30 to 17:30 New York, on the half hour, Monday to Friday. GitHub cron has
-# no timezone, so this is written in UTC: 12:30-21:30 covers summer time
-# (EDT); in winter time (EST) the same UTC window is 07:30-16:30 New York,
+# 08:30 to 17:30 New York, every 30 minutes, Monday to Friday. GitHub cron has
+# no timezone, so this is written in UTC: 12:30 then 13:00-21:30 covers summer
+# time (EDT); in winter time (EST) the same UTC window is 07:30-16:30 New York,
 # one extra pre-market run, which is fine.
-# Open interest is a prior-night snapshot, so most hours only refresh spot and
-# the odds; the commit-if-changed step below makes an unchanged hour free.
+# Open interest is a prior-night snapshot, so most runs only refresh spot and
+# the odds; the commit-if-changed step below makes an unchanged run free.
 on:
   schedule:
-    - cron: '30 12-21 * * 1-5'
+    - cron: '30 12 * * 1-5'
+    - cron: '0,30 13-21 * * 1-5'
   workflow_dispatch:
 
 permissions:

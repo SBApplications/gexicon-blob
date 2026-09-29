@@ -109,10 +109,12 @@ came from CBOE.
 
 ## Scheduling
 
-Ten runs a session, on the half hour, 08:30 to 17:30 New York, Monday to
+Nineteen runs a session, every 30 minutes, 08:30 to 17:30 New York, Monday to
 Friday. GitHub's cron has no timezone, so the times are written in UTC and
 shift by an hour relative to New York when the clocks change — in winter time
 the same UTC window starts at 07:30 New York instead, one extra pre-market run.
+The cron is two entries (`30 12 * * 1-5` and `0,30 13-21 * * 1-5`) because the
+first slot is :30 only.
 
 A symbol whose quote is stale, or that otherwise fails to fetch, is dropped
 from that run and named on stderr under WARNING — it does not stop the rest of
@@ -149,7 +151,7 @@ working copy alongside the indicator.
 
 GitHub queues scheduled workflows and fires them hours late. `ops/supabase_dispatch.sql`
 sets up a Supabase pg_cron job that calls this workflow's manual trigger on the same
-hourly schedule, on the minute. Run it once in the SQL editor of an active Supabase
+schedule (every 30 minutes), on the minute. Run it once in the SQL editor of an active Supabase
 project and follow the credential note at the bottom of the file. The GitHub cron stays
 on as a fallback; the concurrency group and the commit-if-changed step keep the two
 from colliding.

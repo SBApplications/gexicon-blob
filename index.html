@@ -327,7 +327,7 @@
   <header>
     <div class="brand"><span class="pulse"><i></i></span> Gexicon</div>
     <h1>The data blob</h1>
-    <p class="sub">One line of text, rebuilt every hour. Copy it into the indicator&rsquo;s <b>GEX data blob</b> setting &mdash; that is the whole workflow.</p>
+    <p class="sub">One line of text, rebuilt every 30 minutes. Copy it into the indicator&rsquo;s <b>GEX data blob</b> setting &mdash; that is the whole workflow.</p>
   </header>
 
   <section class="panel" id="blob-card">
@@ -353,7 +353,7 @@
     </div>
   </section>
 
-  <p class="caveat">08:30 to 17:30 New York, on the half hour, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
+  <p class="caveat">08:30 to 17:30 New York, every 30 minutes, Monday to Friday. GitHub queues scheduled jobs, so a run often starts several minutes after its time &mdash; a countdown at zero with nothing new yet is normal, not a failure.</p>
 
   <div class="notes">
     <div class="note">
@@ -371,7 +371,7 @@
   </div>
 
   <footer>
-    Built every hour by <a href="https://github.com/SBApplications/gexicon-blob">SBApplications/gexicon-blob</a>.
+    Built every 30 minutes by <a href="https://github.com/SBApplications/gexicon-blob">SBApplications/gexicon-blob</a>.
     Raw file: <a href="https://raw.githubusercontent.com/SBApplications/gexicon-blob/main/latest.blob">latest.blob</a>.
     <noscript><br>JavaScript is off, so this page cannot read the blob. Use the raw file link above.</noscript>
   </footer>
@@ -388,10 +388,16 @@
   // which is why nothing here is hardcoded in ET. 12:30-21:30 UTC is
   // 08:30-17:30 New York in summer time, 07:30-16:30 in winter time (one
   // extra pre-market run), matching the cron below.
-  //   cron: '30 12-21 * * 1-5'
-  var SLOTS = (function () { var a = []; for (var h = 12; h <= 21; h++) a.push([h, 30]); return a; })(); // [UTC hour, minute]
+  //   cron: '30 12 * * 1-5'
+  //   cron: '0,30 13-21 * * 1-5'
+  // First slot 12:30 UTC, then every 30 minutes through 21:30 UTC.
+  var SLOTS = (function () {
+    var a = [[12, 30]];
+    for (var h = 13; h <= 21; h++) { a.push([h, 0]); a.push([h, 30]); }
+    return a;
+  })(); // [UTC hour, minute]
   var WEEKDAYS = [1, 2, 3, 4, 5]; // cron 1-5, Monday to Friday, in UTC
-  var LATE_GRACE_MS = 25 * 60 * 1000; // how long a fired slot still reads as "due"
+  var LATE_GRACE_MS = 10 * 60 * 1000; // how long a fired slot still reads as "due"
 
   function isRunDay(d) {
     return WEEKDAYS.indexOf(d.getUTCDay()) !== -1;
